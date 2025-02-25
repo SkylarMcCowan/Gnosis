@@ -1,0 +1,129 @@
+Skylar McCowan
+Data Engineer
+(573) 873-8434
+Skylarmccowan4@gmail.com
+Linkedin Willing to relocate
+Technical Skills:
+● Programming Languages: Golang, Python, SQL, CQL, R, C#, C++, C, JavaScript, React, Liquid, Ruby on Rails, Node.js PHP, HTML, CSS, LUA, Powershell, Bash, Basic, SSH
+● Databases: DB2, MySQL, MongoDB, Cassandra, HiveDB, PostgreSQL, Cloudant
+● Tools and Frameworks: Airtable, Tableau, Kafka, Spark, PowerBI, Excel, Apache Airfl ow, Cognos, Watson, Elementor, Avada, AWS, Azure, Git, Slack
+● Additional Skills: Systems Administration, Collaboration and Project Management, Data Collection and Cleaning, Computer Networking, Data Warehouse Administration, Version Control, Data Pipeline Orchestration
+Professional Experience:
+Lake Holdings Corporation, Henderson, NC - CTO August 2024 - Present Team Size: 12
+● Technology Leadership: Spearhead all tech development for Canvas Prints’ e-commerce and fulfi llment systems, as well as Competera’s advanced data services platform, optimizing processes to scale with growth and drive customer engagement.
+● End-to-End Development: Architect and build high-performance web applications using React, Ruby on Rails, and Shopify’s ecosystem, enhancing both user experience and operational effi ciency across multiple e-commerce storefronts.
+● API & Integration Mastery: Design and deploy custom APIs to streamline data fl ow between internal and third-party systems, supporting seamless integration, automation, and centralized data management.
+● Infrastructure Optimization: Oversee and fi ne-tune cloud infrastructure, balancing scalability with cost-effi ciency to support Canvas Prints’ POD services and Competera’s data solutions.
+● Technical Team Leader: Mentor and guide a team of developers, establishing best practices in code quality, agile workfl ows, and project management to meet critical deadlines.
+● Analytics-Driven Enhancements: Collaborate cross-functionally to implement data-backed improvements, maximizing conversion rates and enhancing overall user experience.
+Zimmer Communications, Jeff erson City, MO - Senior Web Developer
+November 2023 - August 2024 Team Size: 3
+● Developed full-stack web applications using SQL, HTML, CSS, PHP, and JavaScript.
+● Managed databases including MySQL and Airtable.
+● Designed and maintained websites using WordPress, Elementor, and various plugins.
+● Implemented custom GPT development and managed E-commerce platforms (Shopify, WooCommerce).
+LOZDev, United States - Data Engineer/Analyst
+February 2023 - Current Team Size: 1
+● Back-End Development: Utilized programming languages including Golang, SQL, Python, Tensorfl ow, C#, C++, JavaScript, PHP, HTML, and CSS to develop robust backend systems.
+● Database Management: Administered and optimized databases such as MongoDB, Cassandra, DB2, Azure, HiveDB, MySQL, PostgreSQL, and Cloudant to ensure data integrity and performance.
+● Data Engineering Tools: Employed Apache Kafka, Apache Spark, Apache Airfl ow, IBM Cognos, IBM Watson, Tableau, Power BI, Excel, and Airtable for data processing, analysis, and visualization.
+Projects and Achievements:
+● Website and CRM Integration: Developed and integrated custom CRM systems for various businesses, enhancing customer relationship management and operational effi ciency.
+● Data Mining and Analysis: Conducted comprehensive data mining on Toast systems to identify and rectify pricing and inventory discrepancies, improving data accuracy.
+● AI and Machine Learning: Contributed to the development of AI models, including dog/cat detectors and rain prediction algorithms, to enhance predictive capabilities and operational effi ciency.
+● Automation and Optimization: Automated clerical tasks and improved company communication through Slack integrations, leading to signifi cant workfl ow enhancements.
+● Web Scraping: Implemented advanced web scraping technologies for eff ective data wrangling and extraction.
+● Database Operations: Performed database backups, restoration, and query optimization, ensuring smooth and effi cient data operations.
+● Data Pipeline Orchestration: Designed and orchestrated data pipelines to facilitate seamless data fl ow and processing.
+● Data Warehousing: Architected and implemented data warehouses to support comprehensive business intelligence and reporting needs.
+● Reporting and Dashboards: Created automated reporting dashboards and generated detailed reports using Airtable, Tableau, Cognos, and Power BI, providing actionable insights.
+● Complex SQL Queries: Developed intricate SQL queries for data migration, transformation, and view creation, ensuring data consistency and reliability.
+● Sentiment Analysis: Built machine learning models to analyze and farm user sentiment, off ering valuable insights for business strategy and decision-making.
+● Web Funnel Marketing: Worked with clients using Keap to create funnel marketing sites, optimizing customer acquisition and conversion rates.
+Torque Motorsports, Osage Beach,MO - Principal Data Engineer
+November 2023 - January 2024 Team Size: 2
+● Full-Stack Development: Led development projects using SQL, Go, Python, C++, HTML, and Liquid to create and maintain robust web applications and systems.
+● Custom CRM Development: Built a custom CRM to handle comprehensive car data, integrating it with marketing automations to create an advanced marketing system.
+● Cloud Migration: Transitioned the company to a new cloud-based system, improving labor tracking, quality of life for technicians, and providing better business metrics for stakeholders.
+● Data Migration and Integration: Managed data migrations, ensuring seamless integration and data integrity across diff erent systems and platforms.
+● E-Commerce Management: Oversaw the development and optimization of e-commerce platforms, including Shopify, resulting in signifi cant increases in session traffi c (67%), sales (23%), and order conversions (3%).
+● Marketing and Analytics: Leveraged data analytics to enhance marketing strategies, contributing to substantial business growth. Developed business intelligence reports using Tableau, highlighting issues with ROI and driving a 60% increase in gross profi t.
+● ML/AI DevOps: Automated inquiries, intake forms, and payment collection processes using machine learning and AI technologies, boosting productivity by 35% and reducing labor costs.
+● Technical Leadership: Guided a team in implementing advanced data engineering solutions, fostering a culture of continuous improvement and technical excellence.
+Elecsys, Olathe, KS - Q/A Tester
+July 2023 - November 2023 Team Size: 15
+● Developed full-stack web applications using SQL, HTML, CSS, PHP, and JavaScript.
+● Managed databases including MySQL and Airtable.
+● Designed and maintained websites using WordPress, Elementor, and various plugins.
+● Implemented custom GPT development and managed E-commerce platforms (Shopify, WooCommerce).
+Spear Power Systems, Grandview, MO - Electronics Lead
+July 2023 - November 2023 Team Size: 5
+● Helped migrate from pen and paper tracking to tablet/computer.
+● Assisted in computer systems installation of new departments.
+● Lead team of 4 in daily tasks.
+IresQ, Olathe,KS - Senior Technician/Business Analyst Consultant
+February 2022 - February 2023 Team Size: 20
+● Asset Management: Assisted in the development and management of the asset management system for a small B2B Apple and Chromebook repair depot.
+● Back-End Development: Developed backend systems using SQL, managing PostgreSQL and MySQL databases.
+● Performance Reporting: Produced daily performance reports and managed inventory systems to ensure effi cient operations.
+● Team Leadership: Led team development and systems improvement initiatives, enhancing overall productivity and workfl ow effi ciency.
+● Conference Presentation: Attended a yearly conference to showcase competitive pricing and demonstrate the superior effi ciency of the repair process compared to typical repair vendors.
+Layer Station LLC, USA/UK - Back End Developer/C#/ASP.NET
+February 2009 - July 2021 Team Size: 40+
+● Backend Development: Initially specialized in server deployment and data migration, ensuring robust infrastructure setup and seamless data transitions.
+● Server Management: Administered email servers, web servers, and private servers utilizing VMWare for various applications including Minecraft, Battlefi eld, and World of Warcraft private servers, ensuring high availability and performance.
+● Full Stack Development: Evolved into a full-stack developer, addressing complex technical issues such as fi xing LUA errors in private WoW servers, notably resolving intricate collision detection problems for spells like Blink.
+● Technical Skill Enhancement: Signifi cantly expanded technical expertise by tackling challenging projects, mentored by experienced colleagues, and self-learning C, fostering advanced problem-solving and coding skills.
+Atomic Provisions, Denver, CO - Executive Chef/Business Analyst
+December 2019 - September 2021 Team Size: 30
+● Inventory and Cost Management: Conducted weekly inventory checks and managed cost analysis using Excel to ensure optimal stock levels and minimize waste.
+● Data-Driven Tools Development: Developed custom calculator applications to streamline waste management, product purchasing and spending, weather-based business forecasting, and prep calculations, enhancing operational effi ciency.
+● Operational Management: Oversaw typical executive chef duties including ordering supplies, scheduling staff , and managing labor costs by actively working on the line to control waste and maintain budget targets.
+● Leadership and Team Management: Led a team of 30+ individuals, ensuring smooth kitchen operations, high food quality standards, and compliance with safety regulations.
+● Process Optimization: Implemented strategies to improve kitchen workfl ow, reduce waste, and optimize labor, contributing to overall business profi tability.
+Syndicate Studios, Kansas City, Mo - Network Administrator/Web Developer
+October 2011 - October 2012 Team Size: 3
+● IT Management: Handled all IT concerns in the offi ce, ensuring smooth and effi cient operations.
+● File System and Drive Setup: Set up new fi le systems and drives for editors, facilitating effi cient media workfl ows.
+● Media Export and Client Showcase: Managed the export of media to drives or disks for client showcases, ensuring high-quality presentations.
+● Data Storage and Backup: Oversaw all data storage and backup processes, automating them to free up time for other tasks.
+● Website User Authentication: Implemented user authentication login on the website, enabling secure access to digital copies and remote data access for clients.
+● Website Development: Created a website for clients to log into and see videos, alongside to showcase our talent to possible customers.
+Education
+Harvard University, Cambridge, MA - CS50 SQL
+June 2024 - December 2024
+Harvard University, Cambridge, MA - CS50 X
+December 2023 - March 2024
+Stanford University, Stanford, CA - Statistics
+July 2023 - December 2023
+IBM - Professional Certifi cation in Javascript Development
+July 2024 - August 2024 GPA: 3.3
+IBM - Professional Certifi cation in AI Engineering
+August 2024 - September 2024 GPA: 3.7
+IBM - Professional Certifi cation in Data Engineering
+May 2023 - July 2023 GPA: 3.5 w/ honors
+ITT Technical Institute, Kansas City, MO - Associates in Information Systems Administration
+October 2011 - October 2013
+Lake Career & Technical Center, Camdenton, MO - Computer Repair & Networking, Graphics Design, Game Design
+August 2007 - May 2011
+Camdenton High School, Camdenton, MO - Diploma
+August 2007 - May 2011
+AWARDS & CERTIFICATIONS
+● IBM Data Engineering Certifi cation
+● Data Engineering Foundations
+● NoSQL, Big Data, and Spark Foundations
+● IBM AI Engineering Certifi cation
+● IBM Full-Stack Javascript Developer Certifi cation
+● IBM AI Developer Certifi cation
+● Mastering Airtable: A Complete Course
+● Comptia A+
+● Outstanding Achievement: Computer Repair & Networking - LCTC 2011
+● Outstanding Achievement: Graphic Design - LCTC 2011
+● Linkedin Assessment Badges:
+○ IT Operations (Top 15% of 2.3 Million)
+○ Linux (Top 30% of 1.4 Million)
+○ SQL (Top 30% of 2 Million)
+○ Python (Top 15% of 4.6 Million)
+● ServSafe Food Handlers Manager
+● Leetcode: Top 50 SQL Badge
+● World Taekwondo Federation recognised Black Belt
