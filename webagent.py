@@ -15,22 +15,30 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import tempfile
 import subprocess
-import random  # 🔹 Import for randomizing prompts
-from duckduckgo_search import DDGS  # ✅ Use DuckDuckGo for web searches
+import random
+import re
+import sys
+import string
+from duckduckgo_search import DDGS
 
 init(autoreset=True)
+
+# Initial conversation state
 assistant_convo = [sys_msgs.assistant_msg]
+
+# Modes and flags
 voice_mode = False
 stop_voice_flag = False
 executor = ThreadPoolExecutor()
-web_search_mode = False  # Track whether web search mode is enabled
+web_search_mode = False
+reasoning_mode = False  # ➜ Toggles between 'main' and 'search' models
 
 MODELS = {
     'main': 'llama3.2',
-    'search': 'deepseek-r1:14b',
+    'search': 'deepseek-r1:14b',  # Model to use when reasoning mode is ON
 }
 
-# 🎭 Fun prompts for text mode input
+# Prompts for text input
 FUN_PROMPTS = [
     "Your move, adventurer! ➜ ",
     "Speak, oh wise one! ➜ ",
@@ -67,7 +75,7 @@ FUN_PROMPTS = [
 def get_fun_prompt():
     return random.choice(FUN_PROMPTS)
 
-# 🎤 Fun listening messages when in voice mode
+# Voice mode listening messages
 FUN_LISTENING_MESSAGES = [
     "🦻 I'm all ears... (Say 'voice stop' if you want me to stop listening)",
     "🎤 Speak now, or forever hold your peace! (Say 'stop talking' to mute me)",
@@ -85,110 +93,103 @@ def get_listening_message():
     return random.choice(FUN_LISTENING_MESSAGES)
 
 def summarize_text(text, max_sentences=3):
-    """Extract key sentences from text."""
     sentences = text.split(". ")
     return ". ".join(sentences[:max_sentences]) + "." if sentences else text
 
+def sanitize_filename(filename):
+    valid_chars = f"-_.() {string.ascii_letters}{string.digits}"
+    return "".join(c for c in filename if c in valid_chars).replace(" ", "_")
+
 def needs_more_search(response_text):
-    """Determine if the AI needs more context based on response content."""
     lower_response = response_text.lower()
-    return any(phrase in lower_response for phrase in [
-        "i don't have enough information",
-        "i need more details",
-        "i couldn't find enough data",
-        "let me check further",
-        "unclear results"
-    ])
+    return any(
+        phrase in lower_response
+        for phrase in [
+            "i don't have enough information",
+            "i need more details",
+            "i couldn't find enough data",
+            "let me check further",
+            "unclear results",
+        ]
+    )
 
 def refine_query(response_text):
-    """Extract key missing details from AI's response to refine the search query."""
-    # Look for keywords the AI says are missing
     missing_keywords = []
     words = response_text.split()
-    
     for i, word in enumerate(words):
         if word.lower() in ["about", "regarding", "on", "of"] and i + 1 < len(words):
             missing_keywords.append(words[i + 1])
-
-    # Create a refined search query
     refined_query = " ".join(missing_keywords) if missing_keywords else response_text[:50]
     print(f"{Fore.YELLOW}Refining search with: {refined_query}\n")
     return refined_query
 
-# Stop voice function - Now also resets voice_mode
 def stop_voice():
     global stop_voice_flag, voice_mode
-    stop_voice_flag = True  # Set flag so async function stops immediately
-    voice_mode = False  # Force return to text mode
-
-    print(f"{Fore.RED}Voice stopped. Returning to text mode.")  # Inform the user
+    stop_voice_flag = True
+    voice_mode = False
+    print(f"{Fore.RED}Voice stopped. Returning to text mode.")
 
     if platform.system() == "Windows":
-        os.system("taskkill /IM mpg123.exe /F")  # Ensure mpg123 is killed
+        os.system("taskkill /IM mpg123.exe /F")
     else:
         os.system("pkill -STOP mpg123")
         time.sleep(0.5)
         os.system("pkill mpg123")
 
-# Text-to-Speech using Edge-TTS with streaming
 async def speak_text(text):
     global stop_voice_flag
     if voice_mode:
         stop_voice_flag = False
         speed = "+50%" if "?" in text else "+30%" if len(text) > 150 else "+40%"
-
-        # ✅ Strip asterisks, underscores, and other markdown symbols
         clean_text = re.sub(r'[*_`]', '', text)
 
-        # Create a temporary audio file
         temp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
         temp_audio_path = temp_audio.name
-        temp_audio.close()  # Close the file so edge-tts can write to it
+        temp_audio.close()
 
-        # Generate the TTS audio and save it
         tts = edge_tts.Communicate(clean_text, voice="en-GB-RyanNeural", rate=speed)
         await tts.save(temp_audio_path)
 
-        # If stop flag was set during generation, delete the file and return
         if stop_voice_flag:
             os.unlink(temp_audio_path)
             return
-        
-        # Play the generated speech without printing mpg123 output
+
         if not stop_voice_flag:
             if platform.system() == "Windows":
-                subprocess.run(["start", "", temp_audio_path], shell=True)  # Use start command on Windows
+                subprocess.run(["start", "", temp_audio_path], shell=True)
             else:
                 process = subprocess.Popen(["mpg123", "-q", temp_audio_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-                # Monitor playback and stop if flag is set
                 while process.poll() is None:
                     if stop_voice_flag:
                         process.terminate()
                         break
-                    await asyncio.sleep(0.1)  # Check every 100ms
+                    await asyncio.sleep(0.1)
 
-        # Cleanup: Remove temporary audio file after playback
         os.unlink(temp_audio_path)
 
-# Streaming response for real-time typing effect with continuous speech
 def stream_response():
+    """
+    Streams the assistant's response from the chosen model.
+    If reasoning_mode is ON, use search model, otherwise use main model.
+    """
     print(f"{Fore.CYAN}Generating response...\n")
     complete_response = ""
-    last_spoken_index = 0  # Track last spoken position
+    last_spoken_index = 0
 
-    response_stream = ollama.chat(model=MODELS["main"], messages=assistant_convo, stream=True)
+    # Decide which model to use based on reasoning_mode
+    chosen_model = MODELS["search"] if reasoning_mode else MODELS["main"]
+
+    response_stream = ollama.chat(model=chosen_model, messages=assistant_convo, stream=True)
 
     async def speak_in_background():
         nonlocal last_spoken_index
-        while last_spoken_index < len(complete_response):  # Only runs while text is being generated
-            await asyncio.sleep(0.2)  # Faster speech updates
+        while last_spoken_index < len(complete_response):
+            await asyncio.sleep(0.2)
             if last_spoken_index < len(complete_response):
                 new_text = complete_response[last_spoken_index:]
-                last_spoken_index = len(complete_response)  # Update spoken position
-                await speak_text(new_text)  # Speak only the new part
+                last_spoken_index = len(complete_response)
+                await speak_text(new_text)
 
-    # Create a new event loop for async speech processing
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     speech_task = loop.create_task(speak_in_background())
@@ -199,43 +200,40 @@ def stream_response():
         print(f"{Fore.GREEN}{text_chunk}", end="", flush=True)
 
     print()
-
-    # Ensure speech finishes
     loop.run_until_complete(speech_task)
     loop.close()
 
     assistant_convo.append({"role": "assistant", "content": complete_response})
 
-# Recognize speech input
 def recognize_speech():
     global stop_voice_flag, voice_mode, web_search_mode
     recognizer = sr.Recognizer()
     with sr.Microphone() as source:
-        print(f"{Fore.YELLOW}{get_listening_message()}")  # Fun listening message
+        print(f"{Fore.YELLOW}{get_listening_message()}")
         try:
-            audio = recognizer.listen(source, timeout=5, phrase_time_limit=8)  # Extended listening time
+            audio = recognizer.listen(source, timeout=5, phrase_time_limit=8)
             speech_text = recognizer.recognize_google(audio).lower()
 
-            # ✅ Expanded Voice Stop Commands (Includes "Voice Mode")
-            stop_commands = ["voice stop", "stop talking", "be quiet", "mute yourself", "stop speaking", "end voice mode", "voice mode"]
+            stop_commands = [
+                "voice stop", "stop talking", "be quiet", "mute yourself",
+                "stop speaking", "end voice mode", "voice mode"
+            ]
             if any(cmd in speech_text for cmd in stop_commands):
                 stop_voice_flag = True
                 stop_voice()
                 voice_mode = False
                 print(f"{Fore.RED}Voice OFF.")
-                return None  # Ensures text mode resumes
+                return None
 
-            # Web search stop command (while keeping voice mode ON)
             if "web search stop" in speech_text:
                 web_search_mode = False
                 print(f"{Fore.YELLOW}Web search OFF.")
-                return ""  # Continue voice input but without web search mode
+                return ""
 
-            return speech_text  # Return recognized speech
+            return speech_text
         except (sr.UnknownValueError, sr.RequestError):
             return ""
 
-# Load models
 def pull_model():
     for model in MODELS.values():
         print(f"{Fore.CYAN}Pulling model '{model}'...")
@@ -243,29 +241,27 @@ def pull_model():
         print(f"{Fore.GREEN}Model '{model}' pulled successfully.")
 
 def search_web(query):
-    """Perform a web search using DuckDuckGo, scrape top results, and return extracted text."""
     results = []
     extracted_data = []
-    
     try:
         with DDGS() as ddgs:
             for result in ddgs.text(query, max_results=5):
                 url = result["href"]
                 title = result["title"]
                 results.append({"title": title, "url": url})
-                
-                # Scrape the webpage
                 page_content = fetch_page_content(url)
                 if page_content:
-                    extracted_data.append({"title": title, "url": url, "content": page_content})
-
+                    extracted_data.append({
+                        "title": title,
+                        "url": url,
+                        "content": page_content
+                    })
     except Exception as e:
         print(f"Search or scraping failed: {e}")
 
-    return extracted_data  # Return the scraped content instead of just links
+    return extracted_data
 
 def fetch_page_content(url):
-    """Fetch and extract text content from a given URL."""
     try:
         response = requests.get(url, timeout=5)
         if response.status_code == 200:
@@ -276,9 +272,8 @@ def fetch_page_content(url):
     return None
 
 def iterative_web_search(query, max_retries=5):
-    """Perform a web search, scrape results, and iteratively refine search if needed."""
     retries = 0
-    accumulated_context = ""  # Store all gathered context
+    accumulated_context = ""
 
     while retries < max_retries:
         print(f"{Fore.CYAN}[Search Attempt {retries + 1}/{max_retries}] Searching for: {query}\n")
@@ -287,47 +282,74 @@ def iterative_web_search(query, max_retries=5):
         if not results:
             print(f"{Fore.RED}No results found for '{query}'. Retrying with refinement...\n")
             retries += 1
-            continue  # Try again with a refined query (to be improved later)
+            continue
 
-        # Summarize and accumulate the retrieved information
         context_snippets = []
         for result in results:
             print(f"{Fore.GREEN}{result['title']}\n{Fore.BLUE}{result['url']}\n")
             summarized_content = summarize_text(result['content'])
             context_snippets.append(f"{result['title']}: {summarized_content}")
 
-        # Store accumulated context
         accumulated_context += "\n\n".join(context_snippets) + "\n\n"
+        assistant_convo.append({
+            "role": "system",
+            "content": f"Here is some information from the web:\n{accumulated_context}"
+        })
 
-        # Add current context to conversation
-        assistant_convo.append({"role": "system", "content": f"Here is some information from the web:\n{accumulated_context}"})
-
-        # Ask the AI if it now has enough context
-        response = ollama.chat(model=MODELS["main"], messages=assistant_convo)
+        # Decide model based on reasoning_mode
+        chosen_model = MODELS["search"] if reasoning_mode else MODELS["main"]
+        response = ollama.chat(model=chosen_model, messages=assistant_convo)
         assistant_convo.append({"role": "assistant", "content": response["message"]["content"]})
-
         print(f"{Fore.MAGENTA}Assistant's response:\n{Fore.GREEN}{response['message']['content']}\n")
 
-        # If the response is confident, stop searching
         if not needs_more_search(response["message"]["content"]):
-            return response["message"]["content"]  # Return final answer
+            return response["message"]["content"]
 
-        # Otherwise, refine query and retry
         query = refine_query(response["message"]["content"])
         retries += 1
 
     print(f"{Fore.YELLOW}Max retries reached. Returning best available answer.\n")
     return response["message"]["content"]
 
-# Main interaction loop
+def search_knowledge_base(topic):
+    knowledge_base_path = os.path.join(os.path.dirname(__file__), "knowledge_base")
+    results = []
+
+    for root, _, files in os.walk(knowledge_base_path):
+        for file in files:
+            file_path = os.path.join(root, file)
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                    if re.search(topic, content, re.IGNORECASE):
+                        results.append((file, content))
+            except FileNotFoundError:
+                print(f"{Fore.RED}File '{file}' not found in knowledge_base.")
+
+    return results
+
+def record_to_knowledge_base(filename, content):
+    knowledge_base_path = os.path.join(os.path.dirname(__file__), "knowledge_base")
+    if not os.path.exists(knowledge_base_path):
+        os.makedirs(knowledge_base_path)
+
+    safe_filename = sanitize_filename(filename)
+    file_path = os.path.join(knowledge_base_path, safe_filename)
+
+    try:
+        with open(file_path, "w", encoding="utf-8") as file:
+            file.write(content)
+        print(f"{Fore.GREEN}Information recorded to '{file_path}' in knowledge_base.")
+    except Exception as e:
+        print(f"{Fore.RED}Failed to record information: {e}")
+
 def main():
-    global assistant_convo, voice_mode, web_search_mode
-    pull_model()  # Load models at startup
+    global assistant_convo, voice_mode, web_search_mode, reasoning_mode
+
+    pull_model()
 
     while True:
         print()
-
-        # Get input (voice or text)
         if voice_mode:
             prompt = recognize_speech()
             if prompt is None:
@@ -335,23 +357,30 @@ def main():
         else:
             prompt = input(f"{Fore.BLUE}{get_fun_prompt()}")
 
-        # Toggle Web Search Mode
+        # Reasoning mode toggle
+        if prompt.lower() == "/reason":
+            reasoning_mode = not reasoning_mode
+            print(f"{Fore.YELLOW}Reasoning mode {'ON' if reasoning_mode else 'OFF'}. Using model '{MODELS['search'] if reasoning_mode else MODELS['main']}'.")
+            continue
+
+        # Toggle web search
         if prompt.lower() == "/websearch":
             web_search_mode = not web_search_mode
             print(f"{Fore.YELLOW}Web search {'ON' if web_search_mode else 'OFF'}.")
             continue
 
-        # Handle Commands
+        # Handle commands
         if prompt.lower() in ["/help", "/exit", "/clear", "/voice", "/stopvoice", "/scrape"]:
             if prompt.lower() == "/help":
                 print("\nCommands:")
                 print("/help - Show this message")
                 print("/exit - Save and exit")
                 print("/clear - Reset conversation")
-                print("/voice - Toggle voice mode (Say 'voice stop' to return to text mode)")
+                print("/voice - Toggle voice mode (Say 'voice stop' to return to text)")
                 print("/websearch - Toggle web search mode (Say 'web search stop' to disable)")
-                print("/stopvoice - Stop AI from speaking mid-response")
                 print("/scrape [url] - Scrape and summarize the content of a webpage")
+                print("/archives [topic] - Search the knowledge base for a topic")
+                print("/reason - Toggle reasoning mode (switch LLM model to deepseek-r1:14b)")
             elif prompt.lower() == "/exit":
                 print(f"{Fore.MAGENTA}Exiting...")
                 exit()
@@ -366,7 +395,24 @@ def main():
                 print(f"{Fore.RED}Voice stopped.")
             continue
 
-        # ✅ 🔹 Web Search Mode Handling (Now Works in Both Voice & Text Modes)
+        # Archives search
+        if prompt.lower().startswith("/archives"):
+            parts = prompt.split(maxsplit=1)
+            if len(parts) < 2:
+                print(f"{Fore.RED}Please specify a topic to search in the knowledge base.")
+                continue
+
+            topic = parts[1]
+            results = search_knowledge_base(topic)
+
+            if results:
+                for filename, content in results:
+                    print(f"{Fore.GREEN}Found in '{filename}':\n{Fore.WHITE}{content}")
+            else:
+                print(f"{Fore.RED}No results found for '{topic}' in the knowledge_base.")
+            continue
+
+        # Web search mode handling
         if web_search_mode and not prompt.startswith("/"):
             print(f"{Fore.CYAN}Searching the web for: {prompt}...\n")
             results = search_web(prompt)
@@ -378,42 +424,49 @@ def main():
                     content = fetch_page_content(result["url"])
                     if content:
                         summary = summarize_text(content)
-                        if summary.strip():  # Ensure it's not empty
+                        if summary.strip():
                             context_snippets.append(f"{result['title']}: {summary}")
 
                 if context_snippets:
-                    # ✅ Add extracted web info as system context
                     web_context = "\n\n".join(context_snippets)
-                    assistant_convo.append({"role": "system", "content": f"Here is web data:\n{web_context}"})
+                    assistant_convo.append({
+                        "role": "system",
+                        "content": f"Here is web data:\n{web_context}"
+                    })
                     print(f"{Fore.YELLOW}Using extracted info to answer your question...\n")
-
+                    record_to_knowledge_base(prompt, web_context)
                 else:
                     print(f"{Fore.RED}No useful web content found. Answering with existing knowledge.")
-                    assistant_convo.append({"role": "system", "content": "I couldn't find relevant web data, but I'll answer based on what I know."})
-
+                    assistant_convo.append({
+                        "role": "system",
+                        "content": "I couldn't find relevant web data, but I'll answer based on what I know."
+                    })
             else:
                 print(f"{Fore.RED}No search results found.")
 
-            # ✅ Ensure AI still answers, even if web search fails
             assistant_convo.append({"role": "user", "content": prompt})
-            response = ollama.chat(model=MODELS["main"], messages=assistant_convo)
+
+            # Decide model based on reasoning mode
+            chosen_model = MODELS["search"] if reasoning_mode else MODELS["main"]
+            response = ollama.chat(model=chosen_model, messages=assistant_convo)
             assistant_convo.append({"role": "assistant", "content": response["message"]["content"]})
 
             print(f"{Fore.MAGENTA}Assistant's response:\n{Fore.GREEN}{response['message']['content']}\n")
 
-            # ✅ If Voice Mode is ON, Speak the Response
             if voice_mode:
                 asyncio.run(speak_text(response["message"]["content"]))
 
-            continue  # Skip normal processing
+            continue
 
-        # 🔹 Standard Assistant Conversation (No Web Search)
+        # Standard assistant conversation
+        # direct stream (with correct model)
         assistant_convo.append({"role": "user", "content": prompt})
-        response = stream_response()
+        stream_response()
 
-        # ✅ If Voice Mode is ON, Speak the Response
+        # If voice is on, speak the last message
         if voice_mode:
-            asyncio.run(speak_text(response))
+            last_response = assistant_convo[-1]["content"]
+            asyncio.run(speak_text(last_response))
 
 if __name__ == "__main__":
     main()
