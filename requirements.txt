@@ -3,6 +3,10 @@ trafilatura==1.12.2
 beautifulsoup4==4.12.3
 colorama==0.4.6
 pytest
-SpeechRecognition
-pyaudio
-edge_tts
+SpeechRecognition==3.10.0
+pyaudio==0.2.13
+edge-tts==1.0.5
+requests==2.31.0
+lxml==4.9.3
+duckduckgo-search==3.8.4
+asyncio
