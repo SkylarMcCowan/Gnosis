@@ -1,7 +1,3 @@
-Got it! Here’s the README.txt without emojis, ready to be saved in VS Code as README.txt.
-
-README.txt
-
 # Voice-Enabled AI Chatbot with Web Search & Text-to-Speech
 
 This is a voice-controlled chatbot that integrates web search using DuckDuckGo, speech recognition, and text-to-speech (TTS) with Edge TTS.
