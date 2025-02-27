@@ -28,18 +28,18 @@ init(autoreset=True)
 
 assistant_convo = [sys_msgs.assistant_msg]
 
-voice_mode = False
+voice_mode = False        # live speech input mode
+tts_mode = False          # if on, responses are read aloud (in text mode)
 stop_voice_flag = False
 executor = ThreadPoolExecutor()
 web_search_mode = False
 reasoning_mode = False
-unfiltered_mode = False  # NEW toggle for unfiltered
-tts_mode = False         # NEW toggle for TTS mode
+unfiltered_mode = False   # Toggle for unfiltered model mode
 
 MODELS = {
-    'main': 'llama3.2',             # normal
-    'search': 'deepseek-r1:14b',      # reasoning
-    'unfiltered': 'r1-1776:70b',      # unfiltered
+    'main': 'llama3.2',            # normal responses
+    'search': 'deepseek-r1:14b',    # reasoning responses
+    'unfiltered': 'r1-1776:70b',    # unfiltered responses
 }
 
 FUN_PROMPTS = [
@@ -79,14 +79,14 @@ def get_fun_prompt():
     return random.choice(FUN_PROMPTS)
 
 FUN_LISTENING_MESSAGES = [
-    "🦻 I'm all ears... (Say 'voice stop' if you want me to stop listening)",
+    "🦻 I'm all ears... (Say 'voice stop' to end live input)",
     "🎤 Speak now, or forever hold your peace! (Say 'stop talking' to mute me)",
-    "🤖 Listening... Beep boop. (Say 'mute yourself' if you need some silence)",
+    "🤖 Listening... Beep boop. (Say 'mute yourself' if you need silence)",
     "👂 Tell me more, I’m intrigued! (Say 'stop speaking' to exit voice mode)",
     "🎧 Tuning in to your frequency... (Say 'voice mode' to switch back to text)",
-    "📡 Receiving transmission... (Say 'end voice mode' if you want me to stop)",
+    "📡 Receiving transmission... (Say 'end voice mode' to stop)",
     "🛸 Scanning for intelligent life... (Say 'voice stop' if you need a break)",
-    "🎙️ Ready to record your wisdom! (Say 'stop talking' to shut me up)",
+    "🎙️ Ready to record your wisdom! (Speak 'stop talking' to shut me up)",
     "🔊 Amplifying your voice… (Say 'mute yourself' if you want quiet time)",
     "🌀 The AI is listening... (Say 'stop speaking' to return to text mode)",
 ]
@@ -94,22 +94,19 @@ FUN_LISTENING_MESSAGES = [
 def get_listening_message():
     return random.choice(FUN_LISTENING_MESSAGES)
 
-# Funny messages after each card is drawn
-DRAW_MESSAGES = [
-    "The spirits whisper secrets...",
-    "A cosmic giggle resonates in the ether...",
-    "Fate smiles, placing this card at your feet...",
-    "Reality quivers as the card is revealed...",
-    "An astral hush, then the card arrives...",
-    "A subtle cosmic hum signals the card's appearance...",
-    "The card glows with hidden possibility...",
-    "Destiny unravels with a flourish of the deck...",
-    "The veil parts, revealing your next card...",
-    "A soft bell-like chime resonates. The card emerges..."
-]
-
-def random_draw_msg():
-    return random.choice(DRAW_MESSAGES)
+# -------------------------------------
+# Audio Effects Utility
+# -------------------------------------
+def play_audio_effect(effect_name):
+    effect_path = os.path.join("effects", f"{effect_name}.mp3")
+    print(f"Attempting to play effect: {effect_path}")
+    if os.path.exists(effect_path):
+        if platform.system() == "Windows":
+            subprocess.run(["start", "", effect_path], shell=True)
+        else:
+            subprocess.run(["mpg123", "-q", effect_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        print(f"Effect file {effect_path} does not exist.")
 
 # -------------------------------------
 # Utility Functions
@@ -139,7 +136,7 @@ def refine_query(response_text):
         if word.lower() in ["about", "regarding", "on", "of"] and (i + 1 < len(words)):
             missing_keywords.append(words[i + 1])
     refined = " ".join(missing_keywords) if missing_keywords else response_text[:50]
-    print(f"{Fore.YELLOW}Refining search with: {refined}{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}Refining search with: {refined}{Style.RESET_ALL}\n")
     return refined
 
 # -------------------------------------
@@ -150,6 +147,7 @@ def stop_voice():
     stop_voice_flag = True
     voice_mode = False
     print(f"{Fore.RED}Voice stopped. Returning to text mode.{Style.RESET_ALL}")
+    play_audio_effect("mic_off")
     if platform.system() == "Windows":
         os.system("taskkill /IM mpg123.exe /F")
     else:
@@ -167,6 +165,7 @@ async def speak_text(text):
         temp_audio_path = temp_audio.name
         temp_audio.close()
         try:
+            import edge_tts
             tts = edge_tts.Communicate(clean_text, voice="en-GB-RyanNeural", rate=speed)
             await tts.save(temp_audio_path)
         except Exception as e:
@@ -189,40 +188,11 @@ async def speak_text(text):
                     await asyncio.sleep(0.1)
         os.unlink(temp_audio_path)
 
-# Specialized TTS for Tarot readings (witchy voice)
-async def speak_tarot_text(text):
-    custom_voice = "en-GB-LibbyNeural"  # Use a custom witchy voice
-    speed = "+50%" if "?" in text else "+30%" if len(text) > 150 else "+40%"
-    clean_text = re.sub(r'[*_`]', '', text)
-    temp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    temp_audio_path = temp_audio.name
-    temp_audio.close()
-    try:
-        tts = edge_tts.Communicate(clean_text, voice=custom_voice, rate=speed)
-        await tts.save(temp_audio_path)
-    except Exception as e:
-        print(f"{Fore.RED}edge-tts error (tarot): {e}{Style.RESET_ALL}")
-        return
-    if not stop_voice_flag:
-        if platform.system() == "Windows":
-            subprocess.run(["start", "", temp_audio_path], shell=True)
-        else:
-            process = subprocess.Popen(["mpg123", "-q", temp_audio_path],
-                                       stdout=subprocess.DEVNULL,
-                                       stderr=subprocess.DEVNULL)
-            while process.poll() is None:
-                if stop_voice_flag:
-                    process.terminate()
-                    break
-                await asyncio.sleep(0.1)
-    os.unlink(temp_audio_path)
-
 # -------------------------------------
 # Streaming Response Function
 # -------------------------------------
 def stream_response():
-    if not reasoning_mode:
-        print(f"{Fore.CYAN}Generating response...{Style.RESET_ALL}\n")
+    print(f"{Fore.CYAN}Generating response...\n{Style.RESET_ALL}")
     complete_response = ""
     if unfiltered_mode:
         chosen_model = MODELS["unfiltered"]
@@ -250,49 +220,42 @@ def stream_response():
     loop.run_until_complete(speech_task)
     loop.close()
     assistant_convo.append({"role": "assistant", "content": complete_response})
+    # Play a response-end audio effect
+    if voice_mode or tts_mode:
+        play_audio_effect("response_end")
+    return complete_response
 
 # -------------------------------------
-# Recognize Speech Function (Improved)
+# Speech Recognition Function
 # -------------------------------------
 def recognize_speech():
     global stop_voice_flag, voice_mode, web_search_mode
     r = sr.Recognizer()
-    r.pause_threshold = 0.8
-    audio_chunks = []
     with sr.Microphone() as source:
         print(f"{Fore.YELLOW}{get_listening_message()}{Style.RESET_ALL}")
-        last_audio_time = time.time()
-        while True:
-            try:
-                chunk = r.listen(source, timeout=5, phrase_time_limit=5)
-                audio_chunks.append(chunk)
-                last_audio_time = time.time()
-            except sr.WaitTimeoutError:
-                break
-            if time.time() - last_audio_time > 5:
-                break
-    if not audio_chunks:
-        return ""
-    recognized_text = ""
-    for chunk in audio_chunks:
         try:
-            recognized_text += r.recognize_google(chunk) + " "
-        except Exception:
-            continue
-    if any(cmd in recognized_text.lower() for cmd in ["voice stop", "stop talking", "be quiet", "mute yourself", "stop speaking", "end voice mode", "voice mode"]):
-        stop_voice_flag = True
-        stop_voice()
-        voice_mode = False
-        print(f"{Fore.RED}Voice OFF.{Style.RESET_ALL}")
-        return None
-    if "web search stop" in recognized_text.lower():
-        web_search_mode = False
-        print(f"{Fore.YELLOW}Web search OFF.{Style.RESET_ALL}")
-        return ""
-    return recognized_text.lower().strip()
+            audio = r.listen(source, timeout=5, phrase_time_limit=5)
+            speech_text = r.recognize_google(audio).lower()
+            stop_cmds = [
+                "voice stop", "stop talking", "be quiet", "mute yourself",
+                "stop speaking", "end voice mode", "voice mode"
+            ]
+            if any(cmd in speech_text for cmd in stop_cmds):
+                stop_voice_flag = True
+                stop_voice()
+                voice_mode = False
+                print(f"{Fore.RED}Voice OFF.{Style.RESET_ALL}")
+                return None
+            if "web search stop" in speech_text:
+                web_search_mode = False
+                print(f"{Fore.YELLOW}Web search OFF.{Style.RESET_ALL}")
+                return ""
+            return speech_text
+        except:
+            return ""
 
 # -------------------------------------
-# Model and Web Search Functions
+# Model & Web Search Functions
 # -------------------------------------
 def pull_model():
     for model_key, model_val in MODELS.items():
@@ -312,7 +275,7 @@ def search_web(query):
                 page_content = fetch_page_content(url)
                 if page_content:
                     extracted_data.append({"title": title, "url": url, "content": page_content})
-    except Exception:
+    except:
         pass
     return extracted_data
 
@@ -322,7 +285,7 @@ def fetch_page_content(url):
         if r.status_code == 200:
             extracted_text = trafilatura.extract(r.text)
             return extracted_text if extracted_text else "No extractable content found."
-    except Exception:
+    except:
         pass
     return None
 
@@ -380,14 +343,13 @@ def record_to_knowledge_base(filename, content):
     safe_filename = sanitize_filename(filename)
     file_path = os.path.join(kb_path, safe_filename)
     try:
-        with open(file_path, "w", encoding="utf-8") as file:
-            file.write(content)
-        print(f"{Fore.GREEN}Information recorded to '{safe_filename}' in knowledge_base.{Style.RESET_ALL}")
-    except Exception as e:
-        print(f"{Fore.RED}Failed to record information: {e}{Style.RESET_ALL}")
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content)
+    except:
+        pass
 
 # -------------------------------------
-# Tarot Data and Reading
+# Tarot Functions
 # -------------------------------------
 MAJOR_ARCANA = [
     "0. The Fool", "I. The Magician", "II. The High Priestess", "III. The Empress",
@@ -426,71 +388,174 @@ SEPHIROTH = [
     "10. Malkuth (Kingdom) - Manifestation & Reality"
 ]
 
+# -------------------------------------
+# Funny Tarot Draw Messages
+# -------------------------------------
+DRAW_MESSAGES = [
+    "The spirits whisper secrets of fate...",
+    "A cosmic giggle echoes through the ether...",
+    "Destiny has shuffled the deck just for you...",
+    "Reality quivers as the card reveals itself...",
+    "A hush falls as the veil of mystery parts...",
+    "The spirits seem amused by this selection...",
+    "The card glows with hidden possibilities...",
+    "The cosmic forces lean in, eager to reveal...",
+    "A soft chime rings in the astral plane...",
+    "The energies converge, guiding this revelation...",
+]
+
 def random_draw_msg():
     return random.choice(DRAW_MESSAGES)
 
 def tarot_reading():
     print(f"{Fore.MAGENTA}The mystic energies align... What question do you seek guidance on?")
     question = input(f"{Fore.YELLOW}Your question: ")
-    print(f"{Fore.CYAN}\nDrawing from a single 78-card deck. Minor Arcana fill the 10 Sephiroth; Majors go on the Path...\n")
+    print(f"{Fore.CYAN}\nDrawing from a single 78-card deck. Minor Arcana fill the 10 Sephiroth; Majors become path cards...\n")
+
     deck = MAJOR_ARCANA + MINOR_ARCANA
     used = set()
-    seph_cards = [None] * 10
+    seph_cards = [None] * 10  # Slots for Sephiroth (Minor Arcana)
     path_cards = []
     minors_filled = 0
+
     while minors_filled < 10:
         card = random.choice(deck)
         if card in used:
             continue
         used.add(card)
+
         print(f"{Fore.YELLOW}**Drew card**: {Fore.WHITE}{card}")
-        print(f"{Fore.CYAN}{random_draw_msg()}\n")
+        print(f"{Fore.CYAN}{random_draw_msg()}\n")  # ✅ Now correctly defined!
         time.sleep(1.0)
+
         if card in MAJOR_ARCANA:
             path_cards.append(card)
         else:
             seph_cards[minors_filled] = card
             minors_filled += 1
-    reading_text = f"**Question**: {question}\n\n"
-    reading_text += "**Sephiroth (Minors)**:\n"
+
+    # Format final reading
+    reading_text = f"**Question**: {question}\n\n**Sephiroth (Minors):**\n"
     for idx, s in enumerate(SEPHIROTH):
         reading_text += f"{s}: {seph_cards[idx]}\n"
-    reading_text += "\n**Paths (Majors) in the order drawn**:\n"
+
+    reading_text += "\n**Paths (Majors) in the order drawn:**\n"
     if path_cards:
         for i, c in enumerate(path_cards, start=1):
             reading_text += f"Path #{i}: {c}\n"
     else:
         reading_text += "None drawn.\n"
+
     print(f"{Fore.BLUE}\n--- Final Tree of Life Layout ---\n{reading_text}\n")
+
     decision = input(f"{Fore.MAGENTA}Would you like me to interpret these cards? (yes/no) ➜ ").strip().lower()
     if decision not in ["y", "yes"]:
         print(f"{Fore.YELLOW}Alright, the reading stands on its own. Farewell!")
         return
+
+    # Interpretation via AI model
     if unfiltered_mode:
         chosen_model = MODELS["unfiltered"]
     elif reasoning_mode:
         chosen_model = MODELS["search"]
     else:
         chosen_model = MODELS["main"]
+
     interpret_prompt = (
         f"You are a Tarot sage. The question is: {question}\n\n"
         f"Here is the final Tree of Life reading, with 10 minor arcana assigned to the Sephiroth in the order they appeared, "
         f"and any major arcana placed as path cards:\n\n{reading_text}\n"
         f"Please provide a cohesive, mystical interpretation of how these cards might answer the question."
     )
+
     assistant_convo.append({"role": "user", "content": interpret_prompt})
+
     print(f"{Fore.CYAN}Generating interpretation from the model {chosen_model}...\n")
     response_stream = ollama.chat(model=chosen_model, messages=assistant_convo, stream=True)
+
     final_text = ""
     for chunk in response_stream:
         text_chunk = chunk["message"]["content"]
         final_text += text_chunk
-        print(f"{Fore.GREEN}{text_chunk}{Style.RESET_ALL}", end="", flush=True)
+        print(f"{Fore.GREEN}{text_chunk}", end="", flush=True)
+
     print()
     assistant_convo.append({"role": "assistant", "content": final_text})
     print(f"\n{Fore.MAGENTA}--- End of Interpretation ---\n")
+
     if voice_mode or tts_mode:
-        asyncio.run(speak_tarot_text(final_text))
+        asyncio.run(speak_text(final_text))
+
+# -------------------------------------
+# Wikipedia Integration (/askwiki)
+# -------------------------------------
+def ask_wiki(query):
+    topics = query.split()  # Basic split; can be enhanced
+    base_url = "https://en.wikipedia.org/wiki/"
+    wiki_texts = []
+    for topic in topics:
+        url = base_url + topic.capitalize()
+        print(f"{Fore.CYAN}Fetching Wikipedia page: {url}{Style.RESET_ALL}")
+        try:
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, "html.parser")
+                content_div = soup.find("div", {"class": "mw-parser-output"})
+                if content_div:
+                    text = "\n".join(content_div.stripped_strings)
+                    if text:
+                        wiki_texts.append(text)
+                else:
+                    wiki_texts.append("No content area found on Wikipedia page.")
+            else:
+                wiki_texts.append(f"Failed to fetch page, status code: {r.status_code}")
+        except Exception as e:
+            wiki_texts.append(f"Error fetching Wikipedia page: {e}")
+    full_wiki = "\n\n".join(wiki_texts)
+    if "No content" in full_wiki or "Failed" in full_wiki or "Error" in full_wiki:
+        print(f"{Fore.RED}Wikipedia did not yield useful information. Falling back to web search...{Style.RESET_ALL}")
+        full_wiki = iterative_web_search(query)
+    record_to_knowledge_base(f"wiki_{sanitize_filename(query)}.txt", full_wiki)
+    prompt = (
+        f"You are a knowledgeable assistant. Based on the following Wikipedia information:\n\n"
+        f"{full_wiki}\n\n"
+        f"Please answer the following query: {query}"
+    )
+    assistant_convo.append({"role": "user", "content": prompt})
+    chosen_model = MODELS["search"] if reasoning_mode else MODELS["main"]
+    response = ollama.chat(model=chosen_model, messages=assistant_convo)
+    final_text = response["message"]["content"]
+    assistant_convo.append({"role": "assistant", "content": final_text})
+    print(f"{Fore.GREEN}{final_text}{Style.RESET_ALL}\n")
+    if voice_mode or tts_mode:
+        asyncio.run(speak_text(final_text))
+
+# -------------------------------------
+# Historian Integration (/historian)
+# -------------------------------------
+def historian():
+    kb_path = os.path.join(os.path.dirname(__file__), "knowledge_base")
+    if not os.path.exists(kb_path):
+        print(f"{Fore.RED}Knowledge base directory does not exist.{Style.RESET_ALL}")
+        return
+    summary = {}
+    for root, _, files in os.walk(kb_path):
+        for file in files:
+            file_path = os.path.join(root, file)
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                    for keyword in ["dog", "fire", "war", "economy", "politics"]:
+                        if keyword in file.lower():
+                            summary.setdefault(keyword, []).append(file)
+            except:
+                pass
+    if summary:
+        print(f"{Fore.CYAN}Historian Summary:{Style.RESET_ALL}")
+        for topic, files in summary.items():
+            print(f"{Fore.GREEN}{topic.capitalize()}: {', '.join(files)}{Style.RESET_ALL}")
+    else:
+        print(f"{Fore.YELLOW}No organized topics found in the knowledge base.{Style.RESET_ALL}")
 
 # -------------------------------------
 # MAIN INTERACTION LOOP
@@ -506,61 +571,81 @@ def main():
                 continue
         else:
             prompt = input(f"{Fore.BLUE}{get_fun_prompt()}{Style.RESET_ALL}")
+        # Toggle reasoning mode
         if prompt.lower() == "/reason":
             reasoning_mode = not reasoning_mode
             if reasoning_mode:
                 unfiltered_mode = False
             which_model = "search" if reasoning_mode else ("unfiltered" if unfiltered_mode else "main")
-            print(f"{Fore.YELLOW}Reasoning mode {'ON' if reasoning_mode else 'OFF'}. Using model: {MODELS[which_model]}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Reasoning mode {'ON' if reasoning_mode else 'OFF'}. Using model: {MODELS[which_model]}")
             continue
+        # Toggle unfiltered mode
         if prompt.lower() == "/unfiltered":
             unfiltered_mode = not unfiltered_mode
             if unfiltered_mode:
                 reasoning_mode = False
             which_model = "unfiltered" if unfiltered_mode else ("search" if reasoning_mode else "main")
-            print(f"{Fore.YELLOW}Unfiltered mode {'ON' if unfiltered_mode else 'OFF'}. Using model: {MODELS[which_model]}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Unfiltered mode {'ON' if unfiltered_mode else 'OFF'}. Using model: {MODELS[which_model]}")
             continue
+        # Toggle TTS mode
         if prompt.lower() == "/tts":
             tts_mode = not tts_mode
             if tts_mode and voice_mode:
-                voice_mode = False
-                print(f"{Fore.YELLOW}Voice mode turned OFF because TTS mode is ON.{Style.RESET_ALL}")
-            print(f"{Fore.YELLOW}TTS mode {'ON' if tts_mode else 'OFF'}.{Style.RESET_ALL}")
+                voice_mode = False  # Ensure only one audio mode is active
+            print(f"{Fore.YELLOW}TTS mode {'ON' if tts_mode else 'OFF'}.")
             continue
+        # Toggle web search mode
         if prompt.lower() == "/websearch":
             web_search_mode = not web_search_mode
-            print(f"{Fore.YELLOW}Web search {'ON' if web_search_mode else 'OFF'}.{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Web search {'ON' if web_search_mode else 'OFF'}.")
             continue
+        # Historian command
+        if prompt.lower() == "/historian":
+            historian()
+            continue
+        # /askwiki command
+        if prompt.lower().startswith("/askwiki"):
+            parts = prompt.split(maxsplit=1)
+            if len(parts) < 2:
+                print(f"{Fore.RED}Please provide a query for /askwiki.{Style.RESET_ALL}")
+                continue
+            wiki_query = parts[1]
+            ask_wiki(wiki_query)
+            continue
+        # Help and exit commands
         if prompt.lower() in ["/help", "/exit", "/clear", "/voice", "/stopvoice"]:
             if prompt.lower() == "/help":
-                print(f"{Style.RESET_ALL}\nCommands:")
+                print("\nCommands:")
                 print("/help - Show help")
                 print("/exit - Save and exit")
                 print("/clear - Reset conversation")
-                print("/voice - Toggle voice mode (turns off TTS mode)")
-                print("/stopvoice - Stop AI speaking mid-response")
+                print("/voice - Toggle voice mode (for live input)")
+                print("/tts - Toggle TTS mode (read responses aloud)")
                 print("/reason - Toggle reasoning mode (deepseek-r1:14b)")
                 print("/unfiltered - Toggle unfiltered mode (r1-1776:70b)")
-                print("/tts - Toggle TTS mode (reads responses aloud)")
-                print("/websearch - Toggle web search mode (Say 'web search stop' to disable it)")
+                print("/websearch - Toggle web search mode")
+                print("/askwiki [query] - Query Wikipedia and interpret the information")
                 print("/tarot - Perform a single-deck Tree of Life Tarot reading")
-                print("/archives [topic] - Search knowledge base for [topic]\n")
+                print("/archives [topic] - Search knowledge base for [topic]")
+                print("/historian - Organize and summarize knowledge base contents")
             elif prompt.lower() == "/exit":
-                print(f"{Fore.MAGENTA}Exiting...{Style.RESET_ALL}")
+                print(f"{Fore.MAGENTA}Exiting...")
                 exit()
             elif prompt.lower() == "/clear":
                 assistant_convo = [sys_msgs.assistant_msg]
-                print(f"{Fore.YELLOW}Conversation reset.{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Conversation reset.")
             elif prompt.lower() == "/voice":
                 voice_mode = not voice_mode
                 if voice_mode and tts_mode:
                     tts_mode = False
-                    print(f"{Fore.YELLOW}TTS mode turned OFF because Voice mode is ON.{Style.RESET_ALL}")
-                print(f"{Fore.YELLOW}Voice {'ON' if voice_mode else 'OFF'}.{Style.RESET_ALL}")
+                if voice_mode:
+                    play_audio_effect("mic_on")
+                print(f"{Fore.YELLOW}Voice {'ON' if voice_mode else 'OFF'}.")
             elif prompt.lower() == "/stopvoice":
                 stop_voice()
-                print(f"{Fore.RED}Voice stopped.{Style.RESET_ALL}")
+                print(f"{Fore.RED}Voice stopped.")
             continue
+        # Archives command
         if prompt.lower().startswith("/archives"):
             parts = prompt.split(maxsplit=1)
             if len(parts) < 2:
@@ -571,11 +656,13 @@ def main():
                 for fname, text in found:
                     print(f"\nFound in {fname}:\n{text}\n")
             else:
-                print(f"{Fore.RED}No results found for '{topic}' in knowledge_base.{Style.RESET_ALL}")
+                print(f"{Fore.RED}No results found for '{topic}' in knowledge base.")
             continue
+        # Tarot reading command
         if prompt.lower() == "/tarot":
             tarot_reading()
             continue
+        # Web Search Mode Handling
         if web_search_mode and not prompt.startswith("/"):
             results = search_web(prompt)
             if results:
@@ -588,25 +675,21 @@ def main():
                     joined = "\n\n".join(context_snippets)
                     assistant_convo.append({"role": "system", "content": f"Here is data:\n{joined}"})
                     record_to_knowledge_base(prompt, joined)
+            
             if unfiltered_mode:
                 chosen_model = MODELS["unfiltered"]
             elif reasoning_mode:
                 chosen_model = MODELS["search"]
             else:
                 chosen_model = MODELS["main"]
+            
             assistant_convo.append({"role": "user", "content": prompt})
-            response = ollama.chat(model=chosen_model, messages=assistant_convo)
-            final_text = response["message"]["content"]
-            assistant_convo.append({"role": "assistant", "content": final_text})
-            print(f"\n{Fore.GREEN}{final_text}{Style.RESET_ALL}\n")
-            if voice_mode or tts_mode:
-                asyncio.run(speak_text(final_text))
+            stream_response()  # ✅ This prints the response dynamically, no need for extra print
+
             continue
+        # Standard conversation
         assistant_convo.append({"role": "user", "content": prompt})
         stream_response()
-        if voice_mode or tts_mode:
-            last_resp = assistant_convo[-1]["content"]
-            asyncio.run(speak_text(last_resp))
 
 if __name__ == "__main__":
     main()
