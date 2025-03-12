@@ -39,7 +39,8 @@ unfiltered_mode = False   # Toggle for unfiltered model mode
 MODELS = {
     'main': 'llama3.2',            # normal responses
     'search': 'deepseek-r1:14b',    # reasoning responses
-    'unfiltered': 'r1-1776:70b',    # unfiltered responses
+    'unfiltered': 'llama2-uncensored',    # unfiltered responses
+    'coding': 'nous-hermes2:10.7b',  # coding responses
 }
 
 FUN_PROMPTS = [
@@ -98,7 +99,7 @@ def get_listening_message():
 # Audio Effects Utility
 # -------------------------------------
 def play_audio_effect(effect_name):
-    effect_path = os.path.join("effects", f"{effect_name}.mp3")
+    effect_path = os.path.join("Audio_Files", f"bloop.mp3")
     print(f"Attempting to play effect: {effect_path}")
     if os.path.exists(effect_path):
         if platform.system() == "Windows":
@@ -558,10 +559,57 @@ def historian():
         print(f"{Fore.YELLOW}No organized topics found in the knowledge base.{Style.RESET_ALL}")
 
 # -------------------------------------
+# Learning Path Functions
+# -------------------------------------
+learning_paths = {}
+
+def create_learning_path(topic, resources):
+    learning_paths[topic] = resources
+    print(f"{Fore.GREEN}Learning path for '{topic}' created successfully.{Style.RESET_ALL}")
+
+def show_learning_path(topic=None):
+    if topic:
+        if topic in learning_paths:
+            print(f"{Fore.CYAN}Learning Path for {topic}:{Style.RESET_ALL}")
+            for resource in learning_paths[topic]:
+                print(f"- {resource}")
+        else:
+            print(f"{Fore.RED}No learning path found for '{topic}'.{Style.RESET_ALL}")
+    else:
+        if learning_paths:
+            print(f"{Fore.CYAN}Saved Learning Paths:{Style.RESET_ALL}")
+            for topic in learning_paths:
+                print(f"- {topic}")
+        else:
+            print(f"{Fore.RED}No learning paths saved.{Style.RESET_ALL}")
+
+def delete_learning_path(topic):
+    if topic in learning_paths:
+        del learning_paths[topic]
+        print(f"{Fore.GREEN}Learning path for '{topic}' deleted successfully.{Style.RESET_ALL}")
+    else:
+        print(f"{Fore.RED}No learning path found for '{topic}'.{Style.RESET_ALL}")
+
+def tutor(topic):
+    prompt = (
+        f"Create a comprehensive learning path for the topic '{topic}'. "
+        f"Include the following sections: Introduction, Intermediate Concepts, Advanced Techniques, Best Practices, Case Studies, and Exercises."
+    )
+    assistant_convo.append({"role": "user", "content": prompt})
+    chosen_model = MODELS["coding"]
+    response = ollama.chat(model=chosen_model, messages=assistant_convo)
+    learning_path = response["message"]["content"]
+    resources = learning_path.split("\n")
+    create_learning_path(topic, resources)
+    print(f"{Fore.CYAN}Generated Learning Path for {topic}:{Style.RESET_ALL}")
+    for resource in resources:
+        print(f"- {resource}")
+
+# -------------------------------------
 # MAIN INTERACTION LOOP
 # -------------------------------------
 def main():
-    global assistant_convo, voice_mode, web_search_mode, reasoning_mode, unfiltered_mode, tts_mode
+    global assistant_convo, voice_mode, web_search_mode, reasoning_mode, unfiltered_mode, tts_mode, coding_mode
     pull_model()
     while True:
         print()
@@ -576,7 +624,8 @@ def main():
             reasoning_mode = not reasoning_mode
             if reasoning_mode:
                 unfiltered_mode = False
-            which_model = "search" if reasoning_mode else ("unfiltered" if unfiltered_mode else "main")
+                coding_mode = False
+            which_model = "search" if reasoning_mode else ("unfiltered" if unfiltered_mode else ("coding" if coding_mode else "main"))
             print(f"{Fore.YELLOW}Reasoning mode {'ON' if reasoning_mode else 'OFF'}. Using model: {MODELS[which_model]}")
             continue
         # Toggle unfiltered mode
@@ -584,8 +633,18 @@ def main():
             unfiltered_mode = not unfiltered_mode
             if unfiltered_mode:
                 reasoning_mode = False
-            which_model = "unfiltered" if unfiltered_mode else ("search" if reasoning_mode else "main")
+                coding_mode = False
+            which_model = "unfiltered" if unfiltered_mode else ("search" if reasoning_mode else ("coding" if coding_mode else "main"))
             print(f"{Fore.YELLOW}Unfiltered mode {'ON' if unfiltered_mode else 'OFF'}. Using model: {MODELS[which_model]}")
+            continue
+        # Toggle coding mode
+        if prompt.lower() == "/coding":
+            coding_mode = not coding_mode
+            if coding_mode:
+                reasoning_mode = False
+                unfiltered_mode = False
+            which_model = "coding" if coding_mode else ("search" if reasoning_mode else ("unfiltered" if unfiltered_mode else "main"))
+            print(f"{Fore.YELLOW}Coding mode {'ON' if coding_mode else 'OFF'}. Using model: {MODELS[which_model]}")
             continue
         # Toggle TTS mode
         if prompt.lower() == "/tts":
@@ -612,6 +671,30 @@ def main():
             wiki_query = parts[1]
             ask_wiki(wiki_query)
             continue
+        # /tutor command
+        if prompt.lower().startswith("/tutor"):
+            parts = prompt.split(maxsplit=1)
+            if len(parts) < 2:
+                print(f"{Fore.RED}Please provide a topic for /tutor.{Style.RESET_ALL}")
+                continue
+            topic = parts[1]
+            tutor(topic)
+            continue
+        # /showpath command
+        if prompt.lower().startswith("/showpath"):
+            parts = prompt.split(maxsplit=1)
+            topic = parts[1] if len(parts) > 1 else None
+            show_learning_path(topic)
+            continue
+        # /delpath command
+        if prompt.lower().startswith("/delpath"):
+            parts = prompt.split(maxsplit=1)
+            if len(parts) < 2:
+                print(f"{Fore.RED}Please provide a topic for /delpath.{Style.RESET_ALL}")
+                continue
+            topic = parts[1]
+            delete_learning_path(topic)
+            continue
         # Help and exit commands
         if prompt.lower() in ["/help", "/exit", "/clear", "/voice", "/stopvoice"]:
             if prompt.lower() == "/help":
@@ -623,11 +706,15 @@ def main():
                 print("/tts - Toggle TTS mode (read responses aloud)")
                 print("/reason - Toggle reasoning mode (deepseek-r1:14b)")
                 print("/unfiltered - Toggle unfiltered mode (r1-1776:70b)")
+                print("/coding - Toggle coding mode (nous-hermes2:10.7b)")
                 print("/websearch - Toggle web search mode")
                 print("/askwiki [query] - Query Wikipedia and interpret the information")
                 print("/tarot - Perform a single-deck Tree of Life Tarot reading")
                 print("/archives [topic] - Search knowledge base for [topic]")
                 print("/historian - Organize and summarize knowledge base contents")
+                print("/tutor [topic] - Create a learning path for the given topic")
+                print("/showpath [topic] - Show the learning path for the given topic")
+                print("/delpath [topic] - Delete the learning path for the given topic")
             elif prompt.lower() == "/exit":
                 print(f"{Fore.MAGENTA}Exiting...")
                 exit()
@@ -662,6 +749,25 @@ def main():
         if prompt.lower() == "/tarot":
             tarot_reading()
             continue
+        # Learning path commands
+        if prompt.lower().startswith("/createpath"):
+            parts = prompt.split(maxsplit=2)
+            if len(parts) < 3:
+                print(f"{Fore.RED}Please provide a topic and resources for /createpath.{Style.RESET_ALL}")
+                continue
+            topic = parts[1]
+            resources = parts[2].split(",")
+            create_learning_path(topic, resources)
+            continue
+
+        if prompt.lower().startswith("/showpath"):
+            parts = prompt.split(maxsplit=1)
+            if len(parts) < 2:
+                print(f"{Fore.RED}Please provide a topic for /showpath.{Style.RESET_ALL}")
+                continue
+            topic = parts[1]
+            show_learning_path(topic)
+            continue
         # Web Search Mode Handling
         if web_search_mode and not prompt.startswith("/"):
             results = search_web(prompt)
@@ -680,6 +786,8 @@ def main():
                 chosen_model = MODELS["unfiltered"]
             elif reasoning_mode:
                 chosen_model = MODELS["search"]
+            elif coding_mode:
+                chosen_model = MODELS["coding"]
             else:
                 chosen_model = MODELS["main"]
             
