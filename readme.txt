@@ -15,6 +15,17 @@ Python Official Site
 
 2. Install Dependencies
 
+(Optional) Create and activate a virtual environment:
+
+# Create a virtual environment
+python -m venv venv
+
+# Activate the virtual environment
+# On Windows:
+venv\Scripts\activate
+# On Mac/Linux:
+source venv/bin/activate
+
 Use pip to install the required libraries:
 
 pip install -r requirements.txt
@@ -35,7 +46,7 @@ pip install pyaudio
 
 Start the chatbot with:
 
-python main.py
+python webagent.py
 
 Once running, it supports both text and voice input.
 

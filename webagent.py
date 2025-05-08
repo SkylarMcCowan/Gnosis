@@ -40,7 +40,7 @@ unfiltered_mode = True   # Toggle for unfiltered model mode
 coding_mode = False      # Toggle for coding model mode
 
 MODELS = {
-    'main': 'llama3.2',            # normal responses
+    'main': 'llama3.1',            # normal responses
     'search': 'deepseek-r1:14b',    # reasoning responses
     'unfiltered': 'llama2-uncensored',    # unfiltered responses
     'coding': 'nous-hermes2:10.7b',  # coding responses
@@ -142,6 +142,16 @@ def refine_query(response_text):
     refined = " ".join(missing_keywords) if missing_keywords else response_text[:50]
     print(f"{Fore.YELLOW}Refining search with: {refined}{Style.RESET_ALL}\n")
     return refined
+
+def fetch_page_content(url):
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            extracted_text = trafilatura.extract(r.text)
+            return extracted_text if extracted_text else "No extractable content found."
+    except:
+        pass
+    return None
 
 # -------------------------------------
 # Voice Handling Functions
@@ -283,16 +293,6 @@ def search_web(query):
         pass
     return extracted_data
 
-def fetch_page_content(url):
-    try:
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200:
-            extracted_text = trafilatura.extract(r.text)
-            return extracted_text if extracted_text else "No extractable content found."
-    except:
-        pass
-    return None
-
 def iterative_web_search(query, max_retries=5):
     retries = 0
     accumulated_context = ""
@@ -321,6 +321,56 @@ def iterative_web_search(query, max_retries=5):
         query = refine_query(response["message"]["content"])
         retries += 1
     return response["message"]["content"]
+
+def generate_dynamic_queries(base_query, max_retries=3):
+    """
+    Generate multiple dynamic search queries using the dynamic query generator agent.
+    """
+    prompt = (
+        f"{sys_msgs.dynamic_query_generator_msg}\n\n"
+        f"USER PROMPT: {base_query}"
+    )
+    for attempt in range(max_retries):
+        try:
+            response = ollama.chat(model=MODELS["main"], messages=[{"role": "user", "content": prompt}])
+            print(f"{Fore.YELLOW}Attempt {attempt + 1}: Raw response: {response}{Style.RESET_ALL}")
+            
+            # Extract the content field
+            if "message" in response and "content" in response["message"]:
+                content = response["message"]["content"]
+                
+                # Attempt to extract the JSON part from the content
+                match = re.search(r"\[\s*\".*?\"\s*(,\s*\".*?\")*\s*\]", content, re.DOTALL)
+                if match:
+                    json_data = match.group(0)  # Extract the JSON string
+                    queries = json.loads(json_data)  # Parse the JSON string
+                    if isinstance(queries, list) and len(queries) == 5:
+                        return queries
+        except json.JSONDecodeError as e:
+            print(f"{Fore.RED}JSON decoding error: {e}{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"{Fore.RED}Error generating dynamic queries (Attempt {attempt + 1}): {e}{Style.RESET_ALL}")
+    
+    print(f"{Fore.RED}All attempts to generate dynamic queries failed. Using fallback queries.{Style.RESET_ALL}")
+    return [
+        base_query,
+        f"{base_query} news",
+        f"{base_query} 2025",
+        f"{base_query} analysis",
+        f"{base_query} summary"
+    ]
+
+def perform_multiple_searches(base_query):
+    """
+    Perform multiple searches using dynamically generated queries.
+    """
+    queries = generate_dynamic_queries(base_query)
+    all_results = []
+    for query in queries:
+        print(f"{Fore.CYAN}Performing search for: {query}{Style.RESET_ALL}")
+        results = search_web(query)
+        all_results.extend(results)
+    return all_results
 
 # -------------------------------------
 # Knowledge Base Functions
@@ -680,13 +730,13 @@ def main():
             continue
         # Web Search Mode Handling
         if web_search_mode and not prompt.startswith("/"):
-            results = search_web(prompt)
-            if results:
+            all_results = perform_multiple_searches(prompt)
+            if all_results:
                 context_snippets = []
-                for r in results:
-                    c = summarize_text(r["content"])
-                    if c.strip():
-                        context_snippets.append(f"{r['title']}: {c}")
+                for result in all_results:
+                    summary = summarize_text(result["content"])
+                    if summary.strip():
+                        context_snippets.append(f"{result['title']}: {summary}")
                 if context_snippets:
                     joined = "\n\n".join(context_snippets)
                     assistant_convo.append({"role": "system", "content": f"Here is data:\n{joined}"})

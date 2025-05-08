@@ -113,3 +113,15 @@ mirroring_trading_bot_msg = (
     'Analyze market trends and execute trades accordingly. '
     'Return a summary of executed trades and current positions.'
 )
+
+# ✅ Dynamic Query Generator Agent
+dynamic_query_generator_msg = (
+    'You are responsible for generating multiple effective search queries based on the USER PROMPT. '
+    'Analyze the prompt and create a list of 5 diverse, contextually relevant search queries. '
+    'Ensure the queries cover different aspects of the topic to maximize the breadth of information retrieved. '
+    'Use synonyms, related terms, and different phrasing to improve diversity. '
+    'Return the queries as a JSON array, e.g., ["query 1", "query 2", "query 3", "query 4", "query 5"]. '
+    'Example: For the prompt "How does photosynthesis work?", generate queries like: '
+    '["photosynthesis process", "how plants convert sunlight", "chlorophyll function in photosynthesis", '
+    '"steps of photosynthesis", "photosynthesis in plants"].'
+)
