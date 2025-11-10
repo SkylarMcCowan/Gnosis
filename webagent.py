@@ -20,8 +20,10 @@ import re
 import sys
 import string
 from duckduckgo_search import DDGS
+import yt_dlp
 # Import tutor functions
 from tutor import create_learning_path, show_learning_path, delete_learning_path, tutor
+from news import news_command
 
 # -------------------------------------
 # Initialization
@@ -41,9 +43,9 @@ coding_mode = False      # Toggle for coding model mode
 
 MODELS = {
     'main': 'llama3.1',            # normal responses
-    'search': 'deepseek-r1:14b',    # reasoning responses
-    'unfiltered': 'llama2-uncensored',    # unfiltered responses
-    'coding': 'nous-hermes2:10.7b',  # coding responses
+    'search': 'llama3.1',          # reasoning responses (fallback to main)
+    'unfiltered': 'llama3.1',      # unfiltered responses (fallback to main)
+    'coding': 'llama3.1',          # coding responses (fallback to main)
 }
 
 FUN_PROMPTS = [
@@ -344,7 +346,7 @@ def generate_dynamic_queries(base_query, max_retries=3):
                 if match:
                     json_data = match.group(0)  # Extract the JSON string
                     queries = json.loads(json_data)  # Parse the JSON string
-                    if isinstance(queries, list) and len(queries) == 5:
+                    if isinstance(queries, list) and len(queries) == 10:
                         return queries
         except json.JSONDecodeError as e:
             print(f"{Fore.RED}JSON decoding error: {e}{Style.RESET_ALL}")
@@ -565,6 +567,50 @@ def tutor(topic):
         print(f"- {resource}")
 
 # -------------------------------------
+# Password Generation Functions
+# -------------------------------------
+import secrets
+
+def generate_password(length=20):
+    alphabet = string.ascii_letters + string.digits + string.punctuation
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+def password_command(args=None):
+    num_passwords = 5
+    if args and args.startswith('-') and args[1:].isdigit():
+        num_passwords = int(args[1:])
+    passwords = [generate_password() for _ in range(num_passwords)]
+    for idx, pwd in enumerate(passwords, 1):
+        print(f"{idx}. {pwd}")
+
+# -------------------------------------
+# YouTube Download Function
+# -------------------------------------
+def ytdl_command(url):
+    """
+    Download YouTube video in highest quality to ~/Downloads
+    """
+    if not url:
+        print(f"{Fore.RED}Please provide a YouTube URL.{Style.RESET_ALL}")
+        return
+    
+    downloads_path = os.path.expanduser("~/Downloads")
+    
+    ydl_opts = {
+        'format': 'best[height<=1080]',  # Best quality up to 1080p
+        'outtmpl': f'{downloads_path}/%(title)s.%(ext)s',
+        'noplaylist': True,
+    }
+    
+    try:
+        print(f"{Fore.CYAN}Downloading video from: {url}{Style.RESET_ALL}")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        print(f"{Fore.GREEN}Download completed! Check ~/Downloads{Style.RESET_ALL}")
+    except Exception as e:
+        print(f"{Fore.RED}Error downloading video: {e}{Style.RESET_ALL}")
+
+# -------------------------------------
 # MAIN INTERACTION LOOP
 # -------------------------------------
 def main():
@@ -587,6 +633,14 @@ def main():
             which_model = "search" if reasoning_mode else ("unfiltered" if unfiltered_mode else ("coding" if coding_mode else "main"))
             print(f"{Fore.YELLOW}Reasoning mode {'ON' if reasoning_mode else 'OFF'}. Using model: {MODELS[which_model]}")
             continue
+        
+         # /password command
+        if prompt.lower().startswith("/password"):
+            parts = prompt.split(maxsplit=1)
+            args = parts[1] if len(parts) > 1 else None
+            password_command(args)
+            continue
+
         # Toggle unfiltered mode
         if prompt.lower() == "/unfiltered":
             unfiltered_mode = not unfiltered_mode
@@ -654,26 +708,42 @@ def main():
             topic = parts[1]
             delete_learning_path(topic)
             continue
+                # /news command
+        if prompt.lower().startswith("/news"):
+            parts = prompt.split(maxsplit=1)
+            args = parts[1] if len(parts) > 1 else None
+            news_command(args)
+            continue
+        
+        # /ytdl command
+        if prompt.lower().startswith("/ytdl"):
+            parts = prompt.split(maxsplit=1)
+            url = parts[1] if len(parts) > 1 else None
+            ytdl_command(url)
+            continue
         # Help and exit commands
         if prompt.lower() in ["/help", "/exit", "/clear", "/voice", "/stopvoice"]:
             if prompt.lower() == "/help":
                 print("\nCommands:")
-                print("/help - Show help")
-                print("/exit - Save and exit")
-                print("/clear - Reset conversation")
-                print("/voice - Toggle voice mode (for live input)")
-                print("/tts - Toggle TTS mode (read responses aloud)")
-                print("/reason - Toggle reasoning mode (deepseek-r1:14b)")
-                print("/unfiltered - Toggle unfiltered mode (r1-1776:70b)")
-                print("/coding - Toggle coding mode (nous-hermes2:10.7b)")
-                print("/websearch - Toggle web search mode")
-                print("/askwiki [query] - Query Wikipedia and interpret the information")
-                print("/tarot - Perform a single-deck Tree of Life Tarot reading")
                 print("/archives [topic] - Search knowledge base for [topic]")
-                print("/historian - Organize and summarize knowledge base contents")
-                print("/tutor [topic] - Create a learning path for the given topic")
-                print("/showpath [topic] - Show the learning path for the given topic")
+                print("/askwiki [query] - Query Wikipedia and interpret the information")
+                print("/clear - Reset conversation")
+                print("/coding - Toggle coding mode (nous-hermes2:10.7b)")
                 print("/delpath [topic] - Delete the learning path for the given topic")
+                print("/exit - Save and exit")
+                print("/historian - Organize and summarize knowledge base contents")
+                print("/help - Show help")
+                print("/news - Fetch latest news headlines")
+                print("/password [-N] - Generate N (default 5) complex passwords, each 20 characters")
+                print("/reason - Toggle reasoning mode (deepseek-r1:14b)")
+                print("/showpath [topic] - Show the learning path for the given topic")
+                print("/tarot - Perform a single-deck Tree of Life Tarot reading")
+                print("/tutor [topic] - Create a learning path for the given topic")
+                print("/tts - Toggle TTS mode (read responses aloud)")
+                print("/unfiltered - Toggle unfiltered mode (r1-1776:70b)")
+                print("/voice - Toggle voice mode (for live input)")
+                print("/websearch - Toggle web search mode")
+                print("/ytdl <url> - Download YouTube video in highest quality to ~/Downloads")
             elif prompt.lower() == "/exit":
                 print(f"{Fore.MAGENTA}Exiting...")
                 exit()
