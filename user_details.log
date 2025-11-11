@@ -1,0 +1,10 @@
+# User Profile - Edit this file to customize your AI assistant
+# Lines starting with # are comments
+
+name: User
+location: Location
+timezone: Timezone
+preferences:
+interests: 
+recent_explorations: 
+notes: 
