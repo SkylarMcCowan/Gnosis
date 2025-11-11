@@ -597,9 +597,19 @@ def ytdl_command(url):
     downloads_path = os.path.expanduser("~/Downloads")
     
     ydl_opts = {
-        'format': 'best[height<=1080]',  # Best quality up to 1080p
+        'format': 'best[height<=1080]/best',  # Best quality up to 1080p, fallback to any best
         'outtmpl': f'{downloads_path}/%(title)s.%(ext)s',
         'noplaylist': True,
+        'extract_flat': False,
+        'ignoreerrors': False,
+        # Add user agent and headers to avoid bot detection
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        },
+        # Try to use cookies from browser if available
+        'cookiesfrombrowser': ('safari',),  # Try Safari cookies first
+        'sleep_interval': 1,
+        'max_sleep_interval': 5,
     }
     
     try:
@@ -608,7 +618,28 @@ def ytdl_command(url):
             ydl.download([url])
         print(f"{Fore.GREEN}Download completed! Check ~/Downloads{Style.RESET_ALL}")
     except Exception as e:
-        print(f"{Fore.RED}Error downloading video: {e}{Style.RESET_ALL}")
+        error_msg = str(e)
+        if "Sign in to confirm you're not a bot" in error_msg:
+            print(f"{Fore.YELLOW}YouTube is blocking the download (bot detection).{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Trying alternative method...{Style.RESET_ALL}")
+            
+            # Try without cookies as fallback
+            ydl_opts_fallback = ydl_opts.copy()
+            ydl_opts_fallback.pop('cookiesfrombrowser', None)
+            ydl_opts_fallback['format'] = 'worst'  # Try lowest quality as last resort
+            
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts_fallback) as ydl:
+                    ydl.download([url])
+                print(f"{Fore.GREEN}Download completed (lower quality)! Check ~/Downloads{Style.RESET_ALL}")
+            except Exception as e2:
+                print(f"{Fore.RED}Alternative method also failed.{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Suggestions:{Style.RESET_ALL}")
+                print(f"  • Try again in a few minutes")
+                print(f"  • Use a different video URL")
+                print(f"  • Manual download: yt-dlp --cookies-from-browser safari '{url}'")
+        else:
+            print(f"{Fore.RED}Error downloading video: {e}{Style.RESET_ALL}")
 
 # -------------------------------------
 # MAIN INTERACTION LOOP
