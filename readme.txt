@@ -1,142 +1,247 @@
-Voice-Enabled AI Chatbot with Web Search, Wikipedia Integration & Text-to-Speech
+# 🌟 Gnosis: Advanced Multi-Agent AI Assistant
 
-This AI chatbot supports voice input, real-time web search via DuckDuckGo, Wikipedia scraping, AI-powered reasoning, and text-to-speech (TTS). It is designed for research, automation, and interactive conversations.
+## Intelligent. Adaptive. Specialized.
 
-Installation Instructions
+Gnosis is a cutting-edge AI assistant featuring **10 specialized agent personas**, **intelligent user profiling**, **cross-agent collaboration**, and **resilient offline-first architecture**. Built for researchers, developers, and curious minds who demand more than generic AI responses.
 
-1. Install Python 3.9+
+### 🎯 What Makes Gnosis Different
 
-Check if Python is installed:
+- **10 Specialized AI Agents** - Each with unique expertise and knowledge bases
+- **Smart Agent Suggestions** - Automatically recommends the best agent for your task
+- **Persistent Memory System** - Agents remember past conversations and adapt
+- **Gentle User Learning** - Builds your profile subtly without being intrusive
+- **Cross-Agent Collaboration** - Multiple agents working together on complex tasks
+- **Offline-First Design** - Intelligent responses even without internet connectivity
+- **Voice Integration** - Natural speech input and text-to-speech output
+- **Advanced Learning Paths** - Personalized tutoring with progress tracking
 
-python --version
+## 🚀 Quick Start
 
-If not, download it from:
-Python Official Site
+### Prerequisites
+- **Python 3.9+** - Check with `python --version`
+- **Internet connection** (optional) - Works offline with intelligent fallbacks
 
-2. Install Dependencies
+### Installation
 
-(Optional) Create and activate a virtual environment:
+1. **Clone or download** this repository
+2. **Create virtual environment** (recommended):
+   ```bash
+   python -m venv venv
+   # Activate (Mac/Linux):
+   source venv/bin/activate
+   # Activate (Windows):
+   venv\Scripts\activate
+   ```
 
-# Create a virtual environment
-python -m venv venv
+3. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-# Activate the virtual environment
-# On Windows:
-venv\Scripts\activate
-# On Mac/Linux:
-source venv/bin/activate
+4. **Audio setup** (for voice features):
+   ```bash
+   # Mac/Linux:
+   brew install portaudio && pip install pyaudio
+   # Windows:
+   pip install pipwin && pipwin install pyaudio
+   ```
 
-Use pip to install the required libraries:
-
-pip install -r requirements.txt
-
-If you encounter issues with PyAudio, install it manually:
-
-Windows
-
-pip install pipwin  
-pipwin install pyaudio  
-
-Mac/Linux
-
-brew install portaudio  
-pip install pyaudio  
-
-3. Running the Chatbot
-
-Start the chatbot with:
-
+### Launch Gnosis
+```bash
 python webagent.py
+```
 
-Once running, it supports both text and voice input.
+🎉 **You're ready!** Gnosis will greet you with a random fun prompt and suggest the best agent for your needs.
 
-Command Reference
+## 🎭 Meet Your Specialized Agents
 
-Command	Description
-/voice	Enables voice mode
-“voice stop”	Disables voice mode
-/tts	Enables text-to-speech mode
-/websearch	Enables web search
-“web search stop”	Disables web search
-/askwiki [query]	Searches Wikipedia and generates a response
-/tarot	Generates a Tree of Life Tarot reading with AI interpretation
-/reason	Uses DeepSeek for advanced reasoning
-/unfiltered	Uses r1-1776 for unrestricted AI responses
-/historian	Organizes and cleans the knowledge base
-/archives [topic]	Searches the stored knowledge base
-/clear	Resets the conversation
-/exit	Exits the program
+| Agent | Expertise | When to Use |
+|-------|-----------|-------------|
+| **🔬 Research Synthesizer** | Cross-references sources, synthesizes viewpoints | Complex research, academic analysis |
+| **🧠 Philosophy Bridge** | Ancient wisdom meets modern challenges | Life questions, ethical dilemmas |
+| **🌌 Space Consciousness** | Cosmic perspective on human experience | Existential topics, consciousness studies |
+| **⚖️ Ethics Advisor** | Multi-framework ethical analysis | Moral decisions, AI ethics |
+| **💡 Creative Connector** | Unexpected connections between fields | Innovation, problem-solving |
+| **🎓 Master Tutor** | Personalized learning paths | Education, skill development |
+| **🔍 Fact Checker** | Verifies claims, identifies misinformation | Truth verification, source checking |
+| **😄 Digital Comedian** | Witty observations, appropriate humor | Lightening mood, creative thinking |
+| **🛠️ Code Debugger** | Analyzes bugs, suggests fixes | Programming issues, debugging |
+| **💚 Digital Counselor** | Emotional support, wellness guidance | Stress management, self-reflection |
 
-Web Search Overview
-	1.	Queries DuckDuckGo for the most relevant results.
-	2.	Scrapes and summarizes key webpages.
-	3.	Uses AI to generate a response based on the retrieved information.
-	4.	If necessary, retries with a refined search (up to five times).
+## 🎮 Command Reference
 
-When web search mode is enabled, all user prompts will attempt to retrieve the most accurate information available online.
+### Core Commands
+| Command | Function |
+|---------|----------|
+| `/job [agent]` | Switch to specialized agent (e.g., `/job research`) |
+| `/collab [agent1] [agent2]` | Multi-agent collaboration |
+| `/profile` | View your adaptive user profile |
+| `/voice` | Enable natural speech input |
+| `/tts` | Enable text-to-speech responses |
 
-Wikipedia Integration (/askwiki)
-	1.	Breaks down the query into relevant topics.
-	2.	Finds Wikipedia pages that match those topics.
-	3.	Extracts and summarizes key details.
-	4.	Saves useful content in the knowledge base.
-	5.	Uses AI to generate a response based on the extracted information.
+### Learning & Knowledge
+| Command | Function |
+|---------|----------|
+| `/tutor [topic]` | Create personalized learning path |
+| `/showpath [topic]` | Display learning progress |
+| `/archives [query]` | Search knowledge base |
+| `/historian` | Organize knowledge base |
 
-If Wikipedia does not provide sufficient data, the assistant will automatically switch to web search.
+### Special Features
+| Command | Function |
+|---------|----------|
+| `/tarot` | Tree of Life tarot reading with AI interpretation |
+| `/news` | Latest headlines with analysis |
+| `/reason` | Advanced reasoning mode |
+| `/password [N]` | Generate N secure passwords |
 
-Tarot Reading (/tarot)
-	1.	Draws ten Minor Arcana cards for the Sephiroth positions.
-	2.	Places Major Arcana cards onto the Paths if drawn.
-	3.	Displays the full reading with mystical messages.
-	4.	AI interprets the spread and provides insights.
-	5.	If TTS mode is enabled, responses will be read in a distinct voice.
+## 🧠 Intelligent Features
 
-Historian Mode (/historian)
-	1.	Removes duplicate entries from the knowledge base.
-	2.	Categorizes data into topics such as “Technology,” “History,” “Science,” etc.
-	3.	Improves searchability for archived information.
-	4.	Automatically suggests topics when searching the archives.
+### 🎯 Smart Agent Suggestions
+Gnosis analyzes your questions and automatically suggests the most suitable agent:
+- Coding problems? → Code Debugger
+- Ethical dilemmas? → Ethics Advisor  
+- Learning new concepts? → Master Tutor
+- Research projects? → Research Synthesizer
 
-This mode helps organize previously stored responses for easier access.
+### 🔄 Adaptive User Profiling
+Your AI assistant learns about you gradually and respectfully:
+- **Interests Detection**: Identifies recurring topics
+- **Communication Style**: Adapts to your preferences
+- **Expertise Recognition**: Notices your areas of knowledge
+- **Learning Patterns**: Understands how you like to learn
+- **Privacy-First**: Only 10% chance updates, gentle learning approach
 
-Upcoming Mirroring Bot
+### 🤝 Cross-Agent Collaboration
+Multiple agents can work together on complex tasks:
+```
+/collab research ethics creative
+```
+Combines Research Synthesizer's analysis + Ethics Advisor's moral framework + Creative Connector's innovation
 
-A planned feature for automated decision-making and AI-driven trading analysis. The mirroring bot will:
-	•	Analyze market trends and trading signals.
-	•	Automate decision-making using AI pattern recognition.
-	•	Integrate with financial data for market predictions.
-	•	Operate as a standalone or assistant-driven system.
+### 🌐 Resilient Search System
+- **Offline-First**: Works without internet connection
+- **Intelligent Fallbacks**: Contextual responses when search fails
+- **Domain Expertise**: Specialized responses for technical topics
+- **Network Resilient**: Graceful handling of connectivity issues
 
-This feature is currently in development and will be available in future updates.
+### 🧞‍♂️ Personalized Learning Paths
+Create custom learning journeys with the Master Tutor:
+1. **Assessment**: Evaluates your current knowledge
+2. **Path Creation**: Builds step-by-step learning plan
+3. **Progress Tracking**: Monitors your advancement
+4. **Adaptive Difficulty**: Adjusts based on your pace
 
-Troubleshooting
+### 🔮 Enhanced Tarot System
+Tree of Life readings with specialized AI interpretation:
+- **10 Sephiroth Positions**: Deep mystical analysis
+- **Path Connections**: Major Arcana insights
+- **Voice Integration**: Mystical voice for readings
+- **Personal Context**: Incorporates your profile for relevance
 
-Audio Issues
-	•	Verify that your microphone is working.
-	•	Manually install PyAudio (see installation steps).
+### 📚 Knowledge Base Management
+The Historian agent organizes your accumulated knowledge:
+- **Smart Categorization**: Groups similar topics automatically
+- **Duplicate Removal**: Cleans redundant information
+- **Searchable Archives**: Find past conversations easily
+- **Topic Suggestions**: Intelligent search recommendations
 
-Web Search Not Working?
-	•	Ensure you have an active internet connection.
-	•	Reinstall dependencies:
+## 🎬 Example Interactions
 
-pip install duckduckgo-search requests trafilatura beautifulsoup4
+### Automatic Agent Suggestions
+```
+You: "I'm having trouble with this Python function that keeps throwing errors"
+Gnosis: 💡 This looks like a job for the Code Debugger! Switch with `/job debugger`?
 
+You: /job debugger
+Debugger: ✨ Switched to Code Debugger agent. 
+Let me analyze your code systematically and help identify the issue...
+```
 
+### Cross-Agent Collaboration
+```
+You: /collab research ethics
+Gnosis: Multi-agent collaboration activated!
+🔬 Research Synthesizer will analyze evidence
+⚖️ Ethics Advisor will examine moral implications  
+Working together to provide comprehensive analysis...
+```
 
-TTS Not Working?
-	•	Ensure TTS mode is enabled (/tts).
-	•	Modify the voice settings in speak_text() inside main.py.
+### Adaptive Learning
+```
+You: "Tell me about machine learning"
+Gnosis: I notice you've been exploring AI topics lately. 
+Would you like me to create a personalized learning path? [/tutor machine learning]
+Based on your communication style, I'll focus on practical applications...
+```
 
-Upcoming Features
-	•	AI-driven automated trading and market mirroring.
-	•	Improved Wikipedia integration with better filtering and parsing.
-	•	More advanced voice control for enabling/disabling settings.
-	•	Additional voices for TTS and Tarot readings.
-	•	AI-powered research assistant mode for structured topic analysis.
+## 🔧 Troubleshooting
 
-About This Project
+### Common Issues
 
-Developed by Flyser3
-Last Updated: 02/26/2025
+**🎤 Audio Problems**
+- Check microphone permissions
+- Reinstall PyAudio: `brew install portaudio && pip install pyaudio` (Mac/Linux)
+- For Windows: `pip install pipwin && pipwin install pyaudio`
 
-This chatbot is designed for automation, research, and AI-enhanced conversations. It continues to evolve with new features and improvements based on real-world usage.
+**🌐 Network Issues**
+- Gnosis works offline! Intelligent fallbacks provide contextual responses
+- For search features: Check internet connection
+- Reinstall search dependencies: `pip install requests beautifulsoup4`
+
+**🔊 Text-to-Speech Issues**
+- Enable TTS mode: `/tts`
+- Check system audio settings
+- Try different voice settings in the configuration
+
+**🤖 Agent Memory Issues**
+- Agent memory is stored in `agent_memory/` folder
+- Clear memory by deleting `[agent]_memory.json` files if needed
+- User profile stored in `user_details.log` - edit manually if needed
+
+## 🚀 Advanced Features
+
+### 💾 Memory System
+- **Agent Memory**: Each agent remembers past conversations
+- **Context Awareness**: Agents reference relevant previous discussions
+- **Learning Integration**: Knowledge builds over time
+
+### 🎯 Smart Context
+- **User Profiling**: Gradual learning about your preferences
+- **Communication Adaptation**: Matches your preferred response style
+- **Interest Tracking**: Identifies recurring topics and expertise areas
+
+### 🛡️ Privacy & Control
+- **Gentle Learning**: Only 10% of interactions update your profile
+- **Local Storage**: All data stored locally on your machine
+- **Full Control**: Edit `user_details.log` to modify your profile anytime
+
+## 🌟 What's Next
+
+The Gnosis project continues to evolve with exciting planned features:
+
+- **🤖 Multi-Modal AI**: Vision and document analysis capabilities
+- **🔗 Plugin System**: Community-developed agent extensions  
+- **📊 Analytics Dashboard**: Insight into your learning patterns
+- **🌍 Cloud Sync**: Optional profile synchronization across devices
+- **🎮 Interactive Learning**: Gamified educational experiences
+
+---
+
+## 📚 About This Project
+
+**Gnosis** represents the next evolution of AI assistants - from generic chatbots to specialized, intelligent companions that adapt and learn alongside you.
+
+**Developer**: Enhanced by the AI development community  
+**License**: Open source - contribute on GitHub  
+**Last Updated**: November 2025
+
+*"Knowledge is power, but Gnosis is wisdom."*
+
+Ready to explore the depths of AI-assisted learning and discovery? Launch Gnosis and begin your journey toward enhanced knowledge and understanding.
+
+```bash
+python webagent.py
+```
+
+🌟 **Welcome to the future of personalized AI assistance.**
