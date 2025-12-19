@@ -234,7 +234,7 @@ The Gnosis project continues to evolve with exciting planned features:
 
 **Developer**: Enhanced by the AI development community  
 **License**: Open source - contribute on GitHub  
-**Last Updated**: November 2025
+**Last Updated**: December 19, 2025
 
 *"Knowledge is power, but Gnosis is wisdom."*
 
