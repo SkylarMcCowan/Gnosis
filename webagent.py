@@ -1,14 +1,43 @@
-import ollama
+import os
+# Work around broken proxy environment variables that can prevent ollama/httpx import.
+for proxy_var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "all_proxy"):
+    os.environ.pop(proxy_var, None)
+
+try:
+    import ollama
+    ollama_import_error = None
+except Exception as e:
+    ollama = None
+    ollama_import_error = str(e)
+    print(f"{os.linesep}Warning: unable to import ollama: {e}{os.linesep}")
+
 import sys_msgs
 import requests
-import trafilatura
+try:
+    import trafilatura
+    has_trafilatura = True
+except ImportError:
+    trafilatura = None
+    has_trafilatura = False
 import json
-import speech_recognition as sr
-import edge_tts
+try:
+    import speech_recognition as sr
+    has_speech_recognition = True
+except ImportError:
+    sr = None
+    has_speech_recognition = False
+try:
+    import pyttsx3
+    has_pyttsx3 = True
+except ImportError:
+    pyttsx3 = None
+    has_pyttsx3 = False
 import threading
-import os
 import platform
-from bs4 import BeautifulSoup
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    BeautifulSoup = None
 from colorama import init, Fore, Style
 import time
 import asyncio
@@ -19,8 +48,18 @@ import random
 import re
 import sys
 import string
-from duckduckgo_search import DDGS
-import yt_dlp
+try:
+    from duckduckgo_search import DDGS
+    has_duckduckgo = True
+except ImportError:
+    DDGS = None
+    has_duckduckgo = False
+try:
+    import yt_dlp
+    has_yt_dlp = True
+except ImportError:
+    yt_dlp = None
+    has_yt_dlp = False
 # Import tutor functions
 from tutor import create_learning_path, show_learning_path, delete_learning_path, tutor
 from news import news_command
@@ -35,6 +74,9 @@ assistant_convo = [sys_msgs.assistant_msg]
 voice_mode = False        # live speech input mode
 tts_mode = False          # if on, responses are read aloud (in text mode)
 stop_voice_flag = False
+active_pyttsx3_engine = None
+active_pyttsx3_thread = None
+pyttsx3_lock = threading.Lock()
 executor = ThreadPoolExecutor()
 web_search_mode = False
 reasoning_mode = False
@@ -43,10 +85,10 @@ coding_mode = False      # Toggle for coding model mode
 current_agent = None     # Current specialized agent persona
 
 MODELS = {
-    'main': 'llama3.1',            # normal responses
-    'search': 'llama3.1',          # reasoning responses (fallback to main)
-    'unfiltered': 'llama3.1',      # unfiltered responses (fallback to main)
-    'coding': 'llama3.1',          # coding responses (fallback to main)
+    'main': 'yi:6b',            # normal responses
+    'search': 'qwen3.5:2b',          # reasoning responses (fallback to main)
+    'unfiltered': 'yi:6b',      # unfiltered responses (fallback to main)
+    'coding': 'qwen3.5:4b',          # coding responses (fallback to main)
 }
 
 FUN_PROMPTS = [
@@ -89,6 +131,111 @@ def get_fun_prompt():
         return f"[{agent_name}] {base_prompt}"
     return base_prompt
 
+
+# -----------------------------
+# Conversation management
+# -----------------------------
+def trim_conversation(max_messages=80, max_chars=20000):
+    """Trim `assistant_convo` to keep it within a reasonable context window.
+    Keeps the last `max_messages` messages and ensures total characters stay below `max_chars`.
+    """
+    global assistant_convo
+    if not isinstance(assistant_convo, list) or not assistant_convo:
+        return
+    # Keep the system seed message if present at index 0
+    seed = assistant_convo[0] if assistant_convo and assistant_convo[0].get('role') == 'system' else None
+    tail = assistant_convo[1:] if seed else assistant_convo[:]
+
+    # Trim by message count first
+    if len(tail) > max_messages:
+        tail = tail[-max_messages:]
+
+    # Trim by approximate char count
+    total = sum(len(m.get('content','')) for m in tail)
+    while total > max_chars and tail:
+        # drop the oldest message
+        dropped = tail.pop(0)
+        total -= len(dropped.get('content',''))
+
+    assistant_convo = ([seed] if seed else []) + tail
+
+
+def _conversations_dir():
+    path = os.path.join(os.path.dirname(__file__), "conversations")
+    if not os.path.exists(path):
+        os.makedirs(path, exist_ok=True)
+    return path
+
+
+def save_conversation(name=None):
+    """Save the current assistant_convo to a timestamped file. Returns path or None."""
+    try:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        safe_name = sanitize_filename(name) if name else f"conv_{timestamp}"
+        fname = f"{safe_name}_{timestamp}.json"
+        path = os.path.join(_conversations_dir(), fname)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump({'conversation': assistant_convo}, f, ensure_ascii=False, indent=2)
+        return path
+    except Exception:
+        return None
+
+
+def list_conversations():
+    d = _conversations_dir()
+    files = sorted([f for f in os.listdir(d) if f.endswith('.json')], reverse=True)
+    return files
+
+
+def new_conversation(save_current=True, name=None):
+    """Start a new conversation. Optionally save the current one first."""
+    global assistant_convo
+    saved = None
+    if save_current and assistant_convo and len(assistant_convo) > 1:
+        saved = save_conversation(name)
+    assistant_convo = [sys_msgs.assistant_msg]
+    return saved
+
+
+def load_conversation(name_or_index):
+    """Load a saved conversation by filename or 1-based index from the conversations dir.
+    Returns the path on success, or None on failure.
+    """
+    global assistant_convo
+    try:
+        files = list_conversations()
+        if not files:
+            return None
+
+        # If numeric, treat as 1-based index into the list
+        if isinstance(name_or_index, str) and name_or_index.isdigit():
+            idx = int(name_or_index) - 1
+            if 0 <= idx < len(files):
+                fname = files[idx]
+            else:
+                return None
+        else:
+            # Exact match or fallback to sanitize
+            fname = name_or_index
+            if fname not in files:
+                # try sanitized and partial matches
+                candidates = [f for f in files if sanitize_filename(fname) in f or fname in f]
+                if candidates:
+                    fname = candidates[0]
+                else:
+                    return None
+
+        path = os.path.join(_conversations_dir(), fname)
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        conv = data.get('conversation') or data.get('conversation', [])
+        if isinstance(conv, list) and conv:
+            assistant_convo = conv
+            return path
+    except Exception:
+        return None
+    return None
+
 FUN_LISTENING_MESSAGES = [
     "🦻 I'm all ears... (Say 'voice stop' to end live input)",
     "🎤 Speak now, or forever hold your peace! (Say 'stop talking' to mute me)",
@@ -110,14 +257,11 @@ def get_listening_message():
 # -------------------------------------
 def play_audio_effect(effect_name):
     effect_path = os.path.join("Audio_Files", f"bloop.mp3")
-    print(f"Attempting to play effect: {effect_path}")
     if os.path.exists(effect_path):
         if platform.system() == "Windows":
             subprocess.run(["start", "", effect_path], shell=True)
         else:
             subprocess.run(["mpg123", "-q", effect_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    else:
-        print(f"Effect file {effect_path} does not exist.")
 
 # -------------------------------------
 # Utility Functions
@@ -191,13 +335,17 @@ def fetch_page_content(url):
         
         if r.status_code == 200:
             # Quick extraction with size limit
-            extracted_text = trafilatura.extract(r.text, include_comments=False, include_tables=False)
+            if has_trafilatura:
+                extracted_text = trafilatura.extract(r.text, include_comments=False, include_tables=False)
+            else:
+                extracted_text = None
             if extracted_text and len(extracted_text.strip()) > 50:
                 # Limit content size for faster processing
                 return extracted_text[:1200] if len(extracted_text) > 1200 else extracted_text
             else:
                 # Fallback to basic text extraction
-                from bs4 import BeautifulSoup
+                if BeautifulSoup is None:
+                    return None
                 soup = BeautifulSoup(r.text, 'html.parser')
                 text = soup.get_text()
                 clean_text = ' '.join(text.split())[:800]  # Clean and limit
@@ -212,56 +360,127 @@ def fetch_page_content(url):
 # -------------------------------------
 # Voice Handling Functions
 # -------------------------------------
-def stop_voice():
-    global stop_voice_flag, voice_mode
+def stop_voice(disable_voice=True):
+    global stop_voice_flag, voice_mode, active_pyttsx3_engine, active_pyttsx3_thread
     stop_voice_flag = True
-    voice_mode = False
-    print(f"{Fore.RED}Voice stopped. Returning to text mode.{Style.RESET_ALL}")
-    play_audio_effect("mic_off")
-    if platform.system() == "Windows":
-        os.system("taskkill /IM mpg123.exe /F")
-    else:
-        os.system("pkill -STOP mpg123")
-        time.sleep(0.5)
-        os.system("pkill mpg123")
+    if disable_voice:
+        voice_mode = False
+    if has_pyttsx3 and active_pyttsx3_engine is not None:
+        with pyttsx3_lock:
+            try:
+                active_pyttsx3_engine.stop()
+            except Exception:
+                pass
+            active_pyttsx3_engine = None
+    if has_pyttsx3 and active_pyttsx3_thread is not None:
+        if active_pyttsx3_thread.is_alive():
+            active_pyttsx3_thread.join(timeout=0.5)
+        active_pyttsx3_thread = None
+    if disable_voice:
+        print(f"{Fore.RED}Voice stopped. Returning to text mode.{Style.RESET_ALL}")
+        play_audio_effect("mic_off")
+        if platform.system() == "Windows":
+            os.system("taskkill /IM mpg123.exe /F")
+        else:
+            os.system("pkill -STOP mpg123")
+            time.sleep(0.5)
+            os.system("pkill mpg123")
+
+def _clean_tts_text(text):
+    text = re.sub(r'https?://\S+', '', text)
+    text = re.sub(r'[*_`~#>\[\]\(\)\|]', '', text)
+    text = re.sub(r'[\r\n]+', ' ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
+def _init_pyttsx3_engine():
+    engine = pyttsx3.init()
+    try:
+        rate = engine.getProperty("rate")
+        engine.setProperty("rate", max(120, int(rate * 0.95)))
+    except Exception:
+        pass
+    return engine
+
+
+def _speak_with_pyttsx3(text):
+    global active_pyttsx3_engine, active_pyttsx3_thread
+    engine = _init_pyttsx3_engine()
+    with pyttsx3_lock:
+        active_pyttsx3_engine = engine
+        active_pyttsx3_thread = threading.current_thread()
+    try:
+        engine.say(text)
+        engine.runAndWait()
+    finally:
+        with pyttsx3_lock:
+            if active_pyttsx3_engine is engine:
+                active_pyttsx3_engine = None
+            if active_pyttsx3_thread is threading.current_thread():
+                active_pyttsx3_thread = None
+        try:
+            engine.stop()
+        except Exception:
+            pass
+
 
 async def speak_text(text):
-    global stop_voice_flag
-    if voice_mode or tts_mode:
-        stop_voice_flag = False
-        speed = "+50%" if "?" in text else "+30%" if len(text) > 150 else "+40%"
-        clean_text = re.sub(r'[*_`]', '', text)
-        temp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-        temp_audio_path = temp_audio.name
-        temp_audio.close()
-        try:
-            import edge_tts
-            tts = edge_tts.Communicate(clean_text, voice="en-GB-RyanNeural", rate=speed)
-            await tts.save(temp_audio_path)
-        except Exception as e:
-            print(f"{Fore.RED}edge-tts error: {e}{Style.RESET_ALL}")
-            return
+    global stop_voice_flag, tts_mode, active_pyttsx3_engine, active_pyttsx3_thread
+    if not has_pyttsx3:
+        print(f"{Fore.YELLOW}Text-to-speech is unavailable because pyttsx3 is not installed.{Style.RESET_ALL}")
+        return
+    if not (voice_mode or tts_mode):
+        return
+    stop_voice_flag = False
+    if active_pyttsx3_engine is not None:
+        with pyttsx3_lock:
+            try:
+                active_pyttsx3_engine.stop()
+            except Exception:
+                pass
+            active_pyttsx3_engine = None
+    if active_pyttsx3_thread is not None and active_pyttsx3_thread.is_alive():
+        active_pyttsx3_thread.join(timeout=0.5)
+        if active_pyttsx3_thread.is_alive():
+            active_pyttsx3_thread = None
+    clean_text = _clean_tts_text(text)
+    if not clean_text:
+        return
+    try:
+        await asyncio.to_thread(_speak_with_pyttsx3, clean_text)
+        return
+    except Exception as e:
         if stop_voice_flag:
-            os.unlink(temp_audio_path)
+            # User intentionally interrupted speech; keep TTS enabled.
             return
-        if not stop_voice_flag:
-            if platform.system() == "Windows":
-                subprocess.run(["start", "", temp_audio_path], shell=True)
-            else:
-                process = subprocess.Popen(["mpg123", "-q", temp_audio_path],
-                                           stdout=subprocess.DEVNULL,
-                                           stderr=subprocess.DEVNULL)
-                while process.poll() is None:
-                    if stop_voice_flag:
-                        process.terminate()
-                        break
-                    await asyncio.sleep(0.1)
-        os.unlink(temp_audio_path)
+        error_text = str(e).lower()
+        if "run loop already started" in error_text or "loop already started" in error_text:
+            # Recoverable pyttsx3 state issue: reset engine and retry once.
+            with pyttsx3_lock:
+                active_pyttsx3_engine = None
+            try:
+                await asyncio.to_thread(_speak_with_pyttsx3, clean_text)
+                return
+            except Exception as e2:
+                print(f"{Fore.RED}pyttsx3 error after retry: {e2}{Style.RESET_ALL}")
+                return
+        print(f"{Fore.RED}pyttsx3 error: {e}{Style.RESET_ALL}")
+        tts_mode = False
+        return
 
 # -------------------------------------
 # Streaming Response Function
 # -------------------------------------
 def stream_response():
+    if ollama is None:
+        print(f"{Fore.RED}Ollama client is unavailable. Cannot generate response.{Style.RESET_ALL}")
+        return ""
+    # Ensure conversation is within allowed context window
+    try:
+        trim_conversation()
+    except Exception:
+        pass
     print(f"{Fore.CYAN}Generating response...\n{Style.RESET_ALL}")
     complete_response = ""
     if unfiltered_mode:
@@ -272,13 +491,15 @@ def stream_response():
         chosen_model = MODELS["main"]
     response_stream = ollama.chat(model=chosen_model, messages=assistant_convo, stream=True)
     last_spoken_index = 0
+    response_done = False
     async def speak_in_background():
-        nonlocal last_spoken_index
-        while last_spoken_index < len(complete_response):
+        nonlocal last_spoken_index, response_done
+        while not response_done or last_spoken_index < len(complete_response):
             await asyncio.sleep(0.2)
-            new_text = complete_response[last_spoken_index:]
-            last_spoken_index = len(complete_response)
-            await speak_text(new_text)
+            if last_spoken_index < len(complete_response):
+                new_text = complete_response[last_spoken_index:]
+                last_spoken_index = len(complete_response)
+                await speak_text(new_text)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     speech_task = loop.create_task(speak_in_background())
@@ -286,13 +507,11 @@ def stream_response():
         text_chunk = chunk["message"]["content"]
         complete_response += text_chunk
         print(f"{Fore.GREEN}{text_chunk}{Style.RESET_ALL}", end="", flush=True)
+    response_done = True
     print()
     loop.run_until_complete(speech_task)
     loop.close()
     assistant_convo.append({"role": "assistant", "content": complete_response})
-    # Play a response-end audio effect
-    if voice_mode or tts_mode:
-        play_audio_effect("response_end")
     return complete_response
 
 # -------------------------------------
@@ -300,6 +519,9 @@ def stream_response():
 # -------------------------------------
 def recognize_speech():
     global stop_voice_flag, voice_mode, web_search_mode
+    if not has_speech_recognition:
+        print(f"{Fore.RED}Speech recognition is unavailable because SpeechRecognition is not installed.{Style.RESET_ALL}")
+        return None
     r = sr.Recognizer()
     with sr.Microphone() as source:
         print(f"{Fore.YELLOW}{get_listening_message()}{Style.RESET_ALL}")
@@ -328,23 +550,112 @@ def recognize_speech():
 # Model & Web Search Functions
 # -------------------------------------
 def pull_model():
+    if ollama is None:
+        print(f"{Fore.RED}Ollama client is unavailable. Skipping model pull.{Style.RESET_ALL}")
+        return
     for model_key, model_val in MODELS.items():
         print(f"{Fore.CYAN}Pulling model '{model_val}' for key '{model_key}'...{Style.RESET_ALL}")
         ollama.pull(model=model_val)
         print(f"{Fore.GREEN}Model '{model_val}' pulled successfully.{Style.RESET_ALL}")
 
+def search_searx(query):
+    """Search using a SearxNG instance."""
+    searx_url = os.environ.get("SEARXNG_URL", "https://search.lozdev.com")
+    search_endpoint = f"{searx_url.rstrip('/')}/search"
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36'
+    }
+    params = {
+        'q': query,
+        'format': 'json',
+        'language': 'en',
+        'pageno': 1
+    }
+    try:
+        resp = requests.get(search_endpoint, params=params, timeout=12, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        extracted_data = []
+        for result in data.get('results', [])[:5]:
+            url = result.get('url')
+            title = result.get('title') or result.get('content') or query
+            content = result.get('content') or result.get('excerpt') or ''
+            if url and content:
+                extracted_data.append({'title': title, 'url': url, 'content': content})
+            elif url:
+                page_content = fetch_page_content(url)
+                if page_content:
+                    if len(page_content) > 2000:
+                        page_content = page_content[:2000] + '...'
+                    extracted_data.append({'title': title, 'url': url, 'content': page_content})
+        return extracted_data
+    except Exception as e:
+        print(f"{Fore.YELLOW}SearxNG search failed: {e}{Style.RESET_ALL}")
+        return []
+
+
 def search_web(query):
-    """Web search with intelligent fallback for network-restricted environments"""
-    
-    # Skip DuckDuckGo entirely since it's blocked on this network
-    print(f"{Fore.CYAN}🧠 Generating intelligent response for: {query}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}ℹ️ Using offline knowledge base (web search unavailable due to network restrictions){Style.RESET_ALL}")
-    
-    # Use enhanced fallback with contextual intelligence
+    """Web search with intelligent fallback to SearxNG, DuckDuckGo, or offline context."""
+    print(f"{Fore.CYAN}🧠 Performing web search for: {query}{Style.RESET_ALL}")
+    results = search_searx(query)
+    if results:
+        return results
+    if has_duckduckgo:
+        results = search_duckduckgo(query)
+        if results:
+            return results
+    print(f"{Fore.YELLOW}ℹ️ Web search sources unavailable or returned no results. Using offline fallback.{Style.RESET_ALL}")
     return search_fallback(query)
+
+
+def is_fallback_result(result):
+    """Detect synthetic fallback results that should not be treated as real web search hits."""
+    return isinstance(result, dict) and result.get("url") == "system://intelligent-fallback"
+
+
+def check_search_services(timeout=8):
+    """Check which search services are reachable and usable.
+
+    Returns a dict with boolean flags: {'searxng': bool, 'duckduckgo': bool}
+    """
+    status = {'searxng': False, 'duckduckgo': False}
+    # Check SearxNG
+    try:
+        searx_url = os.environ.get('SEARXNG_URL', 'https://search.lozdev.com').rstrip('/')
+        search_endpoint = f"{searx_url}/search"
+        headers = {'User-Agent': 'Gnosis/1.0'}
+        resp = requests.get(search_endpoint, params={'q': 'healthcheck', 'format': 'json'}, timeout=timeout, headers=headers)
+        if resp.ok:
+            # basic validation: JSON with 'results' key or at least parsable
+            try:
+                _ = resp.json()
+                status['searxng'] = True
+            except Exception:
+                status['searxng'] = False
+        else:
+            status['searxng'] = False
+    except Exception:
+        status['searxng'] = False
+
+    # Check DuckDuckGo availability (duckduckgo-search package)
+    if has_duckduckgo:
+        try:
+            with DDGS() as ddgs:
+                # attempt a tiny query
+                _ = list(ddgs.text('healthcheck', max_results=1))
+            status['duckduckgo'] = True
+        except Exception:
+            status['duckduckgo'] = False
+    else:
+        status['duckduckgo'] = False
+
+    return status
 
 def search_duckduckgo(query):
     """DuckDuckGo search with enhanced timeout handling"""
+    if not has_duckduckgo:
+        print(f"{Fore.YELLOW}DuckDuckGo search is unavailable because duckduckgo-search is not installed.{Style.RESET_ALL}")
+        return []
     import signal
     
     def timeout_handler(signum, frame):
@@ -487,6 +798,11 @@ def iterative_web_search(query, max_retries=5):
             context_snippets.append(f"{result['title']}: {summary}")
         accumulated_context += "\n\n".join(context_snippets) + "\n\n"
         assistant_convo.append({"role": "system", "content": f"Here is some info:\n{accumulated_context}"})
+        # Trim before sending to the model to avoid oversized context
+        try:
+            trim_conversation()
+        except Exception:
+            pass
         if unfiltered_mode:
             model_key = "unfiltered"
         elif reasoning_mode:
@@ -545,26 +861,95 @@ def perform_hybrid_search(base_query):
     Reduces queries from 5 to 3, eliminates LLM dependency for dynamic generation.
     """
     import datetime
+
+    def generate_queries_with_model(user_query, max_queries=3):
+        """Use the assistant model (`MODELS['main']`) to generate concise search queries.
+
+        Returns a list of query strings. Falls back to a simple heuristic generator on error.
+        """
+        if ollama is None:
+            return None
+        chosen_model = MODELS.get('main')
+        system_msg = (
+            "You are a helpful query-generator. Given a user's question or prompt, produce a "
+            "short list (up to {max_q}) of concise, search-engine-friendly query strings that would "
+            "help find authoritative information about the user's intent. Return ONLY a JSON array "
+            "of strings and no additional explanation. Use quoted phrases for names when helpful."
+        ).format(max_q=max_queries)
+
+        user_msg = (
+            f"USER PROMPT: {user_query}\n\n"
+            f"Produce up to {max_queries} short search queries as a JSON array of strings."
+        )
+
+        try:
+            resp = ollama.chat(model=chosen_model, messages=[{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}])
+            content = resp.get('message', {}).get('content', '')
+            # Extract JSON array from model output
+            m = re.search(r"\[.*\]", content, re.S)
+            if m:
+                arr_text = m.group(0)
+                try:
+                    queries = json.loads(arr_text)
+                    if isinstance(queries, list) and queries:
+                        return [q for q in queries if isinstance(q, str)][:max_queries]
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return None
+
+    def generate_queries_fallback(query_text, max_queries=3):
+        # Simple heuristic fallback: quoted name windows + dated + latest
+        cleaned = re.sub(r"[\?\!\,\:\;\"]", "", query_text).strip()
+        tokens = cleaned.split()
+        best = None
+        best_score = 0
+        n = len(tokens)
+        stopwords = {'the','is','a','an','in','on','at','of','for','and','or','to','so'}
+        for size in range(min(4, n), 1, -1):
+            for i in range(0, n - size + 1):
+                window = tokens[i:i+size]
+                score = sum(len(t) for t in window) + sum(2 for t in window if t.lower() not in stopwords)
+                if score > best_score:
+                    best_score = score
+                    best = " ".join(window)
+            if best:
+                break
+        queries = []
+        if best:
+            quoted = f'"{best.title()}"'
+            queries.append(f"{quoted} {query_text}")
+            queries.append(f"{quoted} settlement out of court dropped charges {datetime.datetime.now().year}")
+        queries.append(f"{query_text} {datetime.datetime.now().year} {datetime.datetime.now().strftime('%B')}")
+        queries.append(f"{query_text} latest news updates")
+        # Deduplicate and limit
+        seen = set(); out = []
+        for q in queries:
+            if q not in seen:
+                seen.add(q); out.append(q)
+            if len(out) >= max_queries:
+                break
+        return out
     current_year = datetime.datetime.now().year
     current_month = datetime.datetime.now().strftime("%B")
     
-    # Three strategic queries with automatic date context
-    optimized_queries = [
-        f"{base_query} {current_year} {current_month}",  # Current context
-        f"{base_query} latest news updates",  # Recent information
-        base_query  # Original query for broader context
-    ]
+    # Ask the main model to generate targeted search queries first
+    optimized_queries = generate_queries_with_model(base_query, max_queries=3)
+    if not optimized_queries:
+        optimized_queries = generate_queries_fallback(base_query, max_queries=3)
     
     all_results = []
     for query in optimized_queries:
         print(f"{Fore.CYAN}Searching: {query}{Style.RESET_ALL}")
-        results = search_web(query)
+        results = [r for r in (search_web(query) or []) if not is_fallback_result(r)]
+        if not results:
+            continue
         all_results.extend(results)
-        
         # Stop early if we have enough quality results
         if len(all_results) >= 9:
             break
-    
+
     # Remove duplicates by URL
     seen_urls = set()
     unique_results = []
@@ -665,8 +1050,8 @@ def process_search_tags(prompt):
             current_year = datetime.datetime.now().year
             query = f"{tag} {current_year}"
             
-            # Get only top 2 results instead of 6
-            results = search_web(query)[:2]
+            # Get only top 2 real results instead of 6
+            results = [r for r in (search_web(query) or []) if not is_fallback_result(r)][:2]
             
             if results:
                 # Create ultra-concise context - just titles and first 100 chars
@@ -721,6 +1106,7 @@ def load_user_profile():
     profile_path = os.path.join(os.path.dirname(__file__), "user_details.log")
     profile = {
         'name': 'User',
+        'persona': 'neutral',
         'preferences': [],
         'interests': [],
         'location': '',
@@ -759,6 +1145,7 @@ def save_user_profile(profile):
             f.write(f"name: {profile.get('name', 'User')}\n")
             f.write(f"location: {profile.get('location', '')}\n")
             f.write(f"timezone: {profile.get('timezone', '')}\n")
+            f.write(f"persona: {profile.get('persona', 'neutral')}\n")
             f.write(f"preferences: {', '.join(profile.get('preferences', []))}\n")
             f.write(f"interests: {', '.join(profile.get('interests', []))}\n")
             f.write(f"recent_explorations: {', '.join(profile.get('recent_explorations', []))}\n")
@@ -777,6 +1164,9 @@ def get_user_context():
     if profile['location']:
         context_parts.append(f"Location: {profile['location']}")
     
+    if profile['persona']:
+        context_parts.append(f"Persona: {profile['persona']}")
+
     if profile['preferences']:
         context_parts.append(f"Preferences: {', '.join(profile['preferences'])}")
     
@@ -790,6 +1180,59 @@ def get_user_context():
         context_parts.append(f"Additional notes: {profile['notes']}")
     
     return "; ".join(context_parts) if context_parts else "No user profile information available"
+
+
+def get_persona_system_prompt():
+    profile = load_user_profile()
+    persona = profile.get('persona', '').strip()
+    if not persona or persona.lower() == 'neutral':
+        return None
+
+    persona_tags = [p.strip() for p in re.split(r'[,&]|and\b', persona) if p.strip()]
+    if not persona_tags:
+        return None
+
+    if len(persona_tags) == 1:
+        return f"Respond in a {persona_tags[0]} style and tone. Follow this persona preference closely."
+    return f"Respond using the following combined persona styles: {', '.join(persona_tags)}. Match the tone, word choice, and mood to these tags precisely."
+
+
+def get_supported_personas():
+    return ['neutral', 'happy', 'sad', 'angry', 'dark', 'cheery', 'calm', 'professional', 'empathetic', 'direct']
+
+
+def normalize_persona_values(persona):
+    if not persona:
+        return []
+    persona = persona.lower().strip()
+    persona = persona.replace(' and ', ', ')
+    values = [part.strip() for part in persona.split(',') if part.strip()]
+    return values
+
+
+def set_user_persona(persona):
+    persona_values = normalize_persona_values(persona)
+    supported = get_supported_personas()
+    invalid = [value for value in persona_values if value not in supported]
+    if not persona_values or invalid:
+        return False, supported
+
+    normalized = ', '.join(persona_values)
+    profile = load_user_profile()
+    profile['persona'] = normalized
+    save_user_profile(profile)
+    return True, profile
+
+
+def format_persona_transition(old_persona, new_persona):
+    old_normal = old_persona.strip().lower() if old_persona else 'neutral'
+    new_normal = new_persona.strip().lower() if new_persona else 'neutral'
+    if old_normal == new_normal:
+        return f"🎭 {new_normal.title()} is already on stage. The chat continues with the same vibe."
+    if old_normal in ['', 'neutral']:
+        return f"✨ {new_normal.title()} just slid into the chat like a guest star. Neutral took a bow and exited stage left."
+    return f"🎬 {old_normal.title()} exits stage left, and {new_normal.title()} takes the spotlight. Enjoy the new vibe!"
+
 
 def analyze_conversation_patterns(user_input, agent_response=""):
     """Advanced conversation pattern analysis for enhanced learning"""
@@ -1028,6 +1471,7 @@ def create_default_user_profile():
     if not os.path.exists(profile_path):
         default_profile = {
             'name': 'User',
+            'persona': 'neutral',
             'location': '',
             'timezone': '',
             'preferences': ['helpful responses', 'detailed explanations'],
@@ -1150,6 +1594,8 @@ def perform_conversational_search(query):
     """
     Enhanced search that feeds into conversation flow
     """
+    if ollama is None:
+        return f"I cannot perform conversational search because the Ollama client is unavailable."
     try:
         # Get search results using existing optimized search
         search_results = perform_hybrid_search(query)
@@ -1561,6 +2007,199 @@ def record_to_knowledge_base(filename, content):
         pass
 
 # -------------------------------------
+# Self-Improvement Workflow
+# -------------------------------------
+
+def audit_repository():
+    root = os.path.dirname(__file__)
+    total_files = 0
+    total_dirs = 0
+    total_lines = 0
+    ext_counts = {}
+    todos = []
+    large_files = []
+    tests_present = False
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        if '.git' in dirnames:
+            dirnames.remove('.git')
+        if 'venv' in dirnames:
+            dirnames.remove('venv')
+        if '__pycache__' in dirnames:
+            dirnames.remove('__pycache__')
+
+        total_dirs += len(dirnames)
+        for filename in filenames:
+            if filename.startswith('.'):
+                continue
+            path = os.path.join(dirpath, filename)
+            total_files += 1
+            ext = os.path.splitext(filename)[1].lower() or '<noext>'
+            ext_counts[ext] = ext_counts.get(ext, 0) + 1
+            try:
+                if path.endswith('.py'):
+                    with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                        lines = f.readlines()
+                    total_lines += len(lines)
+                    for idx, line in enumerate(lines, start=1):
+                        if any(marker in line for marker in ['TODO', 'FIXME', 'HACK']):
+                            todos.append(f"{path}:{idx}: {line.strip()}")
+                if os.path.getsize(path) > 200_000:
+                    large_files.append((os.path.getsize(path), path))
+            except Exception:
+                pass
+
+        if os.path.basename(dirpath).lower() in ('tests', 'test'):
+            tests_present = True
+
+    ext_summary = '\n'.join([f"  {ext}: {count}" for ext, count in sorted(ext_counts.items(), key=lambda item: (-item[1], item[0]))[:20]])
+    todo_summary = '\n'.join(todos[:20]) if todos else '  No TODO/FIXME comments found.'
+    large_summary = '\n'.join([f"  {size // 1024} KB - {path}" for size, path in sorted(large_files, reverse=True)[:10]])
+    if not large_summary:
+        large_summary = '  No large files detected.'
+
+    return "\n".join([
+        f"Repository root: {root}",
+        f"Total directories: {total_dirs}",
+        f"Total files: {total_files}",
+        f"Total Python lines: {total_lines}",
+        "Top file types:",
+        ext_summary,
+        "Large files:",
+        large_summary,
+        "TODO/FIXME findings:",
+        todo_summary,
+        f"Tests folder present: {'Yes' if tests_present else 'No'}"
+    ])
+
+
+def make_selfimprove_prompt(audit_summary, stage):
+    return (
+        f"You are an autonomous self-improvement assistant for a Python repository. "
+        f"The repository audit is:\n\n{audit_summary}\n\n"
+        f"Based on that audit, please {stage}. "
+        "Answer clearly and concisely in markdown format."
+    )
+
+
+def plan_self_improvements(audit_summary):
+    if ollama is None:
+        return (
+            "1. Audit repository structure and code quality.\n"
+            "2. Identify candidate improvements and write a plan.\n"
+            "3. Verify the plan against repository constraints.\n"
+            "4. Develop the selected features and fixes.\n"
+            "5. Validate the repository by compiling Python files."
+        )
+
+    prompt = make_selfimprove_prompt(audit_summary, "produce a numbered repository improvement plan with verification criteria for each step")
+    try:
+        response = ollama.chat(model=MODELS['main'], messages=[
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": "Generate a concise actionable plan."}
+        ])
+        return response.get('message', {}).get('content', '').strip()
+    except Exception as e:
+        return f"Unable to generate a plan automatically: {e}"
+
+
+def verify_improvement_plan(audit_summary, plan_text):
+    if ollama is None:
+        return "Model unavailable; plan verification skipped."
+
+    prompt = (
+        f"You are verifying a repository improvement plan for a Python project. "
+        f"Repository audit:\n\n{audit_summary}\n\n"
+        f"Proposed plan:\n\n{plan_text}\n\n"
+        "Determine if the plan is feasible, complete, and aligned with the audit. "
+        "If issues exist, list them. Otherwise, confirm readiness for development."
+    )
+    try:
+        response = ollama.chat(model=MODELS['main'], messages=[
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": "Verify the plan and report concerns or approval."}
+        ])
+        return response.get('message', {}).get('content', '').strip()
+    except Exception as e:
+        return f"Unable to verify plan automatically: {e}"
+
+
+def develop_self_improvements(audit_summary, plan_text):
+    if ollama is None:
+        return "Development output unavailable because the Ollama client is unavailable."
+
+    prompt = (
+        f"You are writing development guidance for a Python repository improvement plan. "
+        f"Repository audit:\n\n{audit_summary}\n\n"
+        f"Improvement plan:\n\n{plan_text}\n\n"
+        "Describe concrete development steps and any required code changes or new files. "
+        "Keep the guidance structured and easy to follow."
+    )
+    try:
+        response = ollama.chat(model=MODELS['main'], messages=[
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": "Generate the development actions now."}
+        ])
+        return response.get('message', {}).get('content', '').strip()
+    except Exception as e:
+        return f"Unable to generate development guidance automatically: {e}"
+
+
+def validate_self_improvement():
+    root = os.path.dirname(__file__)
+    compile_errors = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        if '.git' in dirnames:
+            dirnames.remove('.git')
+        if 'venv' in dirnames:
+            dirnames.remove('venv')
+        if '__pycache__' in dirnames:
+            dirnames.remove('__pycache__')
+
+        for filename in filenames:
+            if filename.endswith('.py'):
+                path = os.path.join(dirpath, filename)
+                try:
+                    import py_compile
+                    py_compile.compile(path, doraise=True)
+                except Exception as e:
+                    compile_errors.append(f"{path}: {e}")
+
+    if compile_errors:
+        return f"Validation failed: Python compile errors found.\n" + "\n".join(compile_errors[:20])
+    return "Validation succeeded: all Python files compile successfully."
+
+
+def perform_self_improve():
+    print(f"{Fore.CYAN}🚀 Starting /selfimprove workflow...{Style.RESET_ALL}")
+    audit_text = audit_repository()
+    print(f"{Fore.YELLOW}--- Repository Audit ---{Style.RESET_ALL}")
+    print(audit_text)
+    record_to_knowledge_base('selfimprove_audit.txt', audit_text)
+
+    plan_text = plan_self_improvements(audit_text)
+    print(f"{Fore.YELLOW}--- Proposed Improvement Plan ---{Style.RESET_ALL}")
+    print(plan_text)
+    record_to_knowledge_base('selfimprove_plan.txt', plan_text)
+
+    verification_text = verify_improvement_plan(audit_text, plan_text)
+    print(f"{Fore.YELLOW}--- Plan Verification ---{Style.RESET_ALL}")
+    print(verification_text)
+    record_to_knowledge_base('selfimprove_verification.txt', verification_text)
+
+    development_text = develop_self_improvements(audit_text, plan_text)
+    print(f"{Fore.YELLOW}--- Development Output ---{Style.RESET_ALL}")
+    print(development_text)
+    record_to_knowledge_base('selfimprove_development.txt', development_text)
+
+    validation_text = validate_self_improvement()
+    print(f"{Fore.YELLOW}--- Validation ---{Style.RESET_ALL}")
+    print(validation_text)
+    record_to_knowledge_base('selfimprove_validation.txt', validation_text)
+
+    print(f"{Fore.GREEN}/selfimprove workflow complete.{Style.RESET_ALL}")
+
+# -------------------------------------
 # Wikipedia Integration (/askwiki)
 # -------------------------------------
 def ask_wiki(query):
@@ -1703,6 +2342,9 @@ def ytdl_command(url):
     """
     Download YouTube video in highest quality to ~/Downloads
     """
+    if yt_dlp is None:
+        print(f"{Fore.RED}yt-dlp is not installed, so YouTube downloads are unavailable.{Style.RESET_ALL}")
+        return
     if not url:
         print(f"{Fore.RED}Please provide a YouTube URL.{Style.RESET_ALL}")
         return
@@ -1884,12 +2526,15 @@ def main():
     pull_model()
     while True:
         print()
+        if not voice_mode:
+            play_audio_effect("response_end")
         if voice_mode:
             prompt = recognize_speech()
             if prompt is None:
                 continue
         else:
             prompt = input(f"{Fore.BLUE}{get_fun_prompt()}{Style.RESET_ALL}")
+        stop_voice(disable_voice=False)
         # Toggle reasoning mode
         if prompt.lower() == "/reason":
             reasoning_mode = not reasoning_mode
@@ -1944,6 +2589,20 @@ def main():
         if prompt.lower() == "/websearch":
             web_search_mode = not web_search_mode
             print(f"{Fore.YELLOW}Web search {'ON' if web_search_mode else 'OFF'}.")
+            if web_search_mode:
+                print(f"{Fore.CYAN}Checking search service availability...{Style.RESET_ALL}")
+                svc = check_search_services()
+                parts = []
+                if svc.get('searxng'):
+                    parts.append('SearxNG: UP')
+                else:
+                    parts.append('SearxNG: DOWN')
+                if svc.get('duckduckgo'):
+                    parts.append('DuckDuckGo: available')
+                else:
+                    parts.append('DuckDuckGo: unavailable')
+                parts.append('Fallback: offline contextual search available')
+                print(f"{Fore.GREEN}{' | '.join(parts)}{Style.RESET_ALL}")
             continue
         # Historian command
         if prompt.lower() == "/historian":
@@ -1998,25 +2657,59 @@ def main():
         
         # /profile command
         if prompt.lower().startswith("/profile"):
-            parts = prompt.split(maxsplit=1)
+            parts = prompt.split(maxsplit=2)
             if len(parts) == 1:
                 # Show current profile
                 profile = load_user_profile()
                 print(f"{Fore.CYAN}Current User Profile:{Style.RESET_ALL}")
                 print(f"Name: {profile['name']}")
                 print(f"Location: {profile['location']}")
+                print(f"Persona: {profile.get('persona', 'neutral')}")
                 print(f"Preferences: {', '.join(profile['preferences'])}")
                 print(f"Interests: {', '.join(profile['interests'])}")
                 print(f"Recent Explorations: {', '.join(profile['recent_explorations'])}")
                 print(f"Notes: {profile['notes']}")
-                print(f"{Fore.YELLOW}Edit user_details.log to modify your profile{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Use '/profile persona <value>' to set a persona, or edit user_details.log directly.{Style.RESET_ALL}")
+            elif len(parts) >= 3 and parts[1].lower() == 'persona':
+                profile = load_user_profile()
+                old_persona = profile.get('persona', 'neutral')
+                success, result = set_user_persona(parts[2])
+                if not success:
+                    print(f"{Fore.RED}Unsupported persona. Supported values: {', '.join(result)}{Style.RESET_ALL}")
+                else:
+                    transition_text = format_persona_transition(old_persona, result['persona'])
+                    print(f"{Fore.GREEN}{transition_text}{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.YELLOW}Usage: /profile persona <neutral|happy|sad|angry|dark|cheery|calm|professional|empathetic|direct>{Style.RESET_ALL}")
+            continue
+
+        if prompt.lower().startswith("/persona"):
+            parts = prompt.split(maxsplit=1)
+            if len(parts) == 2:
+                profile = load_user_profile()
+                old_persona = profile.get('persona', 'neutral')
+                success, result = set_user_persona(parts[1])
+                if not success:
+                    print(f"{Fore.RED}Unsupported persona. Supported values: {', '.join(result)}{Style.RESET_ALL}")
+                else:
+                    transition_text = format_persona_transition(old_persona, result['persona'])
+                    print(f"{Fore.GREEN}{transition_text}{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.YELLOW}Usage: /persona <neutral|happy|sad|angry|dark|cheery|calm|professional|empathetic|direct>{Style.RESET_ALL}")
+            continue
+        # /selfimprove command
+        if prompt.lower() == "/selfimprove":
+            perform_self_improve()
             continue
         # Help and exit commands
-        if prompt.lower() in ["/help", "/exit", "/clear", "/voice", "/stopvoice"]:
+        if prompt.lower() in ["/help", "/exit", "/clear", "/voice", "/stopvoice", "/new", "/conversations", "/loadconv"]:
             if prompt.lower() == "/help":
                 print("\nCommands:")
                 print("/archives [topic] - Search knowledge base for [topic]")
                 print("/askwiki [query] - Query Wikipedia and interpret the information")
+                print("/new - Save current conversation and start a new one")
+                print("/conversations - List saved conversations")
+                print("/loadconv <filename|index> - Load a saved conversation by name or list index")
                 print("/clear - Reset conversation")
                 print("/coding - Toggle coding mode (nous-hermes2:10.7b)")
                 print("/delpath [topic] - Delete the learning path for the given topic")
@@ -2026,13 +2719,16 @@ def main():
                 print("/job [agent] - Switch to specialized agent persona (research, philosophy, space, ethics, creative)")
                 print("/news - Fetch latest news headlines")
                 print("/password [-N] - Generate N (default 5) complex passwords, each 20 characters")
-                print("/profile - Show current user profile (edit user_details.log to modify)")
+                print("/profile - Show current user profile")
+                print("/profile persona <value> - Set a profile persona tone")
+                print("/persona <value> - Shortcut to set persona tone")
                 print("/reason - Toggle reasoning mode (deepseek-r1:14b)")
                 print("/showpath [topic] - Show the learning path for the given topic")
                 print("/tarot - Perform a single-deck Tree of Life Tarot reading")
                 print("/tutor [topic] - Create a learning path for the given topic")
                 print("/tts - Toggle TTS mode (read responses aloud)")
                 print("/unfiltered - Toggle unfiltered mode (r1-1776:70b)")
+                print("/selfimprove - Audit, plan, verify, develop, and validate repository improvements")
                 print("/voice - Toggle voice mode (for live input)")
                 print("/websearch - Toggle conversational web search mode (multiple perspectives)")
                 print("/ytdl <url> - Download YouTube video in highest quality to ~/Downloads")
@@ -2044,6 +2740,36 @@ def main():
             elif prompt.lower() == "/clear":
                 assistant_convo = [sys_msgs.assistant_msg]
                 print(f"{Fore.YELLOW}Conversation reset.")
+            elif prompt.lower() == "/new":
+                path = new_conversation(save_current=True)
+                if path:
+                    print(f"{Fore.GREEN}Saved previous conversation to: {path}{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Started a new conversation.{Style.RESET_ALL}")
+            elif prompt.lower() == "/conversations":
+                files = list_conversations()
+                if not files:
+                    print(f"{Fore.YELLOW}No saved conversations found.{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.CYAN}Saved conversations:{Style.RESET_ALL}")
+                    for f in files:
+                        print(f" - {f}")
+            elif prompt.lower().startswith("/loadconv"):
+                parts = prompt.split(maxsplit=1)
+                if len(parts) < 2:
+                    files = list_conversations()
+                    if not files:
+                        print(f"{Fore.YELLOW}No saved conversations available.{Style.RESET_ALL}")
+                    else:
+                        print(f"{Fore.CYAN}Saved conversations (use `/loadconv <index>`):{Style.RESET_ALL}")
+                        for i, f in enumerate(files, start=1):
+                            print(f" {i}. {f}")
+                    continue
+                arg = parts[1]
+                loaded = load_conversation(arg)
+                if loaded:
+                    print(f"{Fore.GREEN}Loaded conversation from: {loaded}{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.RED}Could not load conversation: {arg}{Style.RESET_ALL}")
             elif prompt.lower() == "/voice":
                 voice_mode = not voice_mode
                 if voice_mode and tts_mode:
@@ -2149,6 +2875,9 @@ def main():
                     
                     # Add conversational context and user prompt
                     assistant_convo.append({"role": "system", "content": conversation_prompt})
+                    persona_prompt = get_persona_system_prompt()
+                    if persona_prompt:
+                        assistant_convo.append({"role": "system", "content": persona_prompt})
                     assistant_convo.append({"role": "user", "content": prompt})
                     
                     # Record to knowledge base
@@ -2156,9 +2885,15 @@ def main():
                     
                 else:
                     # No good content found
+                    persona_prompt = get_persona_system_prompt()
+                    if persona_prompt:
+                        assistant_convo.append({"role": "system", "content": persona_prompt})
                     assistant_convo.append({"role": "user", "content": prompt})
             else:
                 # No search results
+                persona_prompt = get_persona_system_prompt()
+                if persona_prompt:
+                    assistant_convo.append({"role": "system", "content": persona_prompt})
                 assistant_convo.append({"role": "user", "content": prompt})
             
             # Generate response
@@ -2179,6 +2914,10 @@ def main():
         if context_info:
             context_message = " | ".join(context_info)
             assistant_convo.append({"role": "system", "content": f"[Context: {context_message}]"})
+
+        persona_prompt = get_persona_system_prompt()
+        if persona_prompt:
+            assistant_convo.append({"role": "system", "content": persona_prompt})
         
         assistant_convo.append({"role": "user", "content": processed_prompt})
         
