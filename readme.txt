@@ -48,8 +48,11 @@ Gnosis is a cutting-edge AI assistant featuring **10 specialized agent personas*
 
 ### Launch Gnosis
 ```bash
-python webagent.py
+./venv/bin/python webagent.py
 ```
+
+The terminal and GUI launchers automatically use the project's `venv` when it
+exists, so `/tts` loads the same `pyttsx3` installation as the rest of Gnosis.
 
 🎉 **You're ready!** Gnosis will greet you with a random fun prompt and suggest the best agent for your needs.
 

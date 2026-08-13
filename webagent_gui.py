@@ -2,10 +2,29 @@
 GUI for WebAgent - Modern chat interface with voice and web search capabilities
 """
 
+import os
 import sys
 import threading
 import asyncio
+import html
 from datetime import datetime
+
+
+def _relaunch_with_project_venv():
+    """Ensure the GUI and its TTS dependency use the project's virtualenv."""
+    project_dir = os.path.dirname(os.path.abspath(__file__))
+    venv_python = os.path.join(project_dir, "venv", "bin", "python")
+    if not os.path.isfile(venv_python):
+        return
+    if os.path.realpath(sys.executable) == os.path.realpath(venv_python):
+        return
+
+    os.execv(venv_python, [venv_python, os.path.abspath(__file__), *sys.argv[1:]])
+
+
+if __name__ == "__main__":
+    _relaunch_with_project_venv()
+
 try:
     from PyQt6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -33,50 +52,8 @@ class ResponseWorker(QThread):
 
     def run(self):
         try:
-            ollama_client = webagent.ollama
-            if ollama_client is None:
-                raise RuntimeError("Ollama client is unavailable. Please install and configure ollama.")
-
-            # Check if web search is enabled
-            if webagent.web_search_mode:
-                # Use conversational search which integrates web results
-                try:
-                    response = webagent.perform_conversational_search(self.user_input)
-                    self.response_chunk.emit(response)
-                    self.response_ready.emit(response)
-                    return
-                except Exception as e:
-                    # Fallback to normal mode if search fails
-                    print(f"Search failed, using normal mode: {e}")
-            
-            # Normal mode (no web search)
-            # Add user message to conversation
-            webagent.assistant_convo.append({
-                "role": "user",
-                "content": self.user_input
-            })
-            
-            # Determine model based on mode
-            if webagent.unfiltered_mode:
-                chosen_model = webagent.MODELS["unfiltered"]
-            elif webagent.reasoning_mode:
-                chosen_model = webagent.MODELS["search"]
-            else:
-                chosen_model = webagent.MODELS["main"]
-            
-            # Stream response and emit chunks
-            complete_response = ""
-            response_stream = ollama_client.chat(model=chosen_model, messages=webagent.assistant_convo, stream=True)
-            
-            for chunk in response_stream:
-                text_chunk = chunk["message"]["content"]
-                complete_response += text_chunk
-                self.response_chunk.emit(text_chunk)  # Emit each chunk
-            
-            # Save complete response to conversation
-            webagent.assistant_convo.append({"role": "assistant", "content": complete_response})
-            self.response_ready.emit(complete_response)
-            
+            response = webagent.chat_response(self.user_input, self.response_chunk.emit)
+            self.response_ready.emit(response)
         except Exception as e:
             self.error_occurred.emit(f"Error: {str(e)}")
         finally:
@@ -146,9 +123,9 @@ class WebAgentGUI(QMainWindow):
 
         self.tts_check = QCheckBox("🔊 TTS")
         self.tts_check.toggled.connect(self.toggle_tts_mode)
-        if not webagent.has_pyttsx3:
+        if not webagent.has_tts_backend():
             self.tts_check.setEnabled(False)
-            self.tts_check.setToolTip("TTS is unavailable when pyttsx3 is not installed.")
+            self.tts_check.setToolTip("No supported TTS backend is available.")
         header_layout.addWidget(self.tts_check)
         
         clear_button = QPushButton("🗑️")
@@ -369,10 +346,11 @@ class WebAgentGUI(QMainWindow):
         
         timestamp = datetime.now().strftime("%H:%M")
         
+        safe_text = html.escape(text).replace("\n", "<br/>")
         if is_user:
-            formatted_text = f'<div style="margin: 10px 0; text-align: right;"><span style="color: #0084ff; font-weight: bold;">You</span> <span style="color: #999; font-size: 11px;">{timestamp}</span><br/><span style="color: #333;">{text}</span></div>'
+            formatted_text = f'<div style="margin: 10px 0; text-align: right;"><span style="color: #0084ff; font-weight: bold;">You</span> <span style="color: #999; font-size: 11px;">{timestamp}</span><br/><span style="color: #333;">{safe_text}</span></div>'
         else:
-            formatted_text = f'<div style="margin: 10px 0;"><span style="color: #666; font-weight: bold;">Assistant</span> <span style="color: #999; font-size: 11px;">{timestamp}</span><br/><span style="color: #333;">{text}</span></div>'
+            formatted_text = f'<div style="margin: 10px 0;"><span style="color: #666; font-weight: bold;">Assistant</span> <span style="color: #999; font-size: 11px;">{timestamp}</span><br/><span style="color: #333;">{safe_text}</span></div>'
         
         cursor.insertHtml(formatted_text)
         self.chat_display.setTextCursor(cursor)
@@ -389,7 +367,7 @@ class WebAgentGUI(QMainWindow):
         
         if reply == QMessageBox.StandardButton.Yes:
             self.chat_display.clear()
-            webagent.assistant_convo = [webagent.sys_msgs.assistant_msg]
+            webagent.new_conversation(save_current=False)
     
     def toggle_voice_mode(self, checked):
         """Toggle voice input mode"""

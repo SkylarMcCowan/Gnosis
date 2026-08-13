@@ -1,4 +1,22 @@
 import os
+import sys
+
+
+def _relaunch_with_project_venv():
+    """Run the terminal app with this checkout's interpreter when available."""
+    project_dir = os.path.dirname(os.path.abspath(__file__))
+    venv_python = os.path.join(project_dir, "venv", "bin", "python")
+    if not os.path.isfile(venv_python):
+        return
+    if os.path.realpath(sys.executable) == os.path.realpath(venv_python):
+        return
+
+    os.execv(venv_python, [venv_python, os.path.abspath(__file__), *sys.argv[1:]])
+
+
+if __name__ == "__main__":
+    _relaunch_with_project_venv()
+
 # Work around broken proxy environment variables that can prevent ollama/httpx import.
 for proxy_var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "all_proxy"):
     os.environ.pop(proxy_var, None)
@@ -46,7 +64,6 @@ import tempfile
 import subprocess
 import random
 import re
-import sys
 import string
 try:
     from duckduckgo_search import DDGS
@@ -77,6 +94,11 @@ stop_voice_flag = False
 active_pyttsx3_engine = None
 active_pyttsx3_thread = None
 pyttsx3_lock = threading.Lock()
+# pyttsx3's driver event loop is process-wide on some platforms.  Keep the
+# complete engine lifecycle single-filed, not just the active-engine pointer.
+pyttsx3_speech_lock = threading.Lock()
+active_tts_process = None
+tts_process_lock = threading.Lock()
 executor = ThreadPoolExecutor()
 web_search_mode = False
 reasoning_mode = False
@@ -84,11 +106,16 @@ unfiltered_mode = False   # Toggle for unfiltered model mode
 coding_mode = False      # Toggle for coding model mode
 current_agent = None     # Current specialized agent persona
 
+
+def has_tts_backend():
+    """Return whether this platform has a supported text-to-speech backend."""
+    return platform.system() == "Darwin" or has_pyttsx3
+
 MODELS = {
     'main': 'yi:6b',            # normal responses
     'search': 'qwen3.5:2b',          # reasoning responses (fallback to main)
     'unfiltered': 'yi:6b',      # unfiltered responses (fallback to main)
-    'coding': 'qwen3.5:4b',          # coding responses (fallback to main)
+    'coding': 'qwen2.5-coder:7b',          # coding responses (fallback to main)
 }
 
 FUN_PROMPTS = [
@@ -360,22 +387,45 @@ def fetch_page_content(url):
 # -------------------------------------
 # Voice Handling Functions
 # -------------------------------------
-def stop_voice(disable_voice=True):
-    global stop_voice_flag, voice_mode, active_pyttsx3_engine, active_pyttsx3_thread
+def stop_tts():
+    """Interrupt the current TTS response without changing audio modes."""
+    global stop_voice_flag, active_pyttsx3_engine, active_pyttsx3_thread, active_tts_process
     stop_voice_flag = True
+    with tts_process_lock:
+        tts_process = active_tts_process
+        active_tts_process = None
+    if tts_process is not None and tts_process.poll() is None:
+        tts_process.terminate()
+        try:
+            tts_process.wait(timeout=0.5)
+        except subprocess.TimeoutExpired:
+            tts_process.kill()
+    with pyttsx3_lock:
+        engine = active_pyttsx3_engine
+        speech_thread = active_pyttsx3_thread
+    if has_pyttsx3 and engine is not None:
+        try:
+            engine.stop()
+        except Exception:
+            pass
+    if (
+        has_pyttsx3
+        and speech_thread is not None
+        and speech_thread is not threading.current_thread()
+        and speech_thread.is_alive()
+    ):
+        speech_thread.join(timeout=0.5)
+    if speech_thread is not None and not speech_thread.is_alive():
+        with pyttsx3_lock:
+            if active_pyttsx3_thread is speech_thread:
+                active_pyttsx3_thread = None
+
+
+def stop_voice(disable_voice=True):
+    global voice_mode
+    stop_tts()
     if disable_voice:
         voice_mode = False
-    if has_pyttsx3 and active_pyttsx3_engine is not None:
-        with pyttsx3_lock:
-            try:
-                active_pyttsx3_engine.stop()
-            except Exception:
-                pass
-            active_pyttsx3_engine = None
-    if has_pyttsx3 and active_pyttsx3_thread is not None:
-        if active_pyttsx3_thread.is_alive():
-            active_pyttsx3_thread.join(timeout=0.5)
-        active_pyttsx3_thread = None
     if disable_voice:
         print(f"{Fore.RED}Voice stopped. Returning to text mode.{Style.RESET_ALL}")
         play_audio_effect("mic_off")
@@ -406,29 +456,76 @@ def _init_pyttsx3_engine():
 
 def _speak_with_pyttsx3(text):
     global active_pyttsx3_engine, active_pyttsx3_thread
-    engine = _init_pyttsx3_engine()
-    with pyttsx3_lock:
-        active_pyttsx3_engine = engine
-        active_pyttsx3_thread = threading.current_thread()
-    try:
-        engine.say(text)
-        engine.runAndWait()
-    finally:
+    # pyttsx3 shares a driver loop between engine instances.  Locking only
+    # around assignment of ``active_pyttsx3_engine`` still allowed concurrent
+    # runAndWait calls, which raises "run loop already started".
+    with pyttsx3_speech_lock:
+        engine = _init_pyttsx3_engine()
         with pyttsx3_lock:
-            if active_pyttsx3_engine is engine:
-                active_pyttsx3_engine = None
-            if active_pyttsx3_thread is threading.current_thread():
-                active_pyttsx3_thread = None
+            active_pyttsx3_engine = engine
+            active_pyttsx3_thread = threading.current_thread()
         try:
-            engine.stop()
-        except Exception:
-            pass
+            engine.say(text)
+            engine.runAndWait()
+        finally:
+            try:
+                engine.stop()
+            except Exception:
+                pass
+            with pyttsx3_lock:
+                if active_pyttsx3_engine is engine:
+                    active_pyttsx3_engine = None
+                if active_pyttsx3_thread is threading.current_thread():
+                    active_pyttsx3_thread = None
+
+
+def _speak_with_macos_say(text):
+    """Use macOS's native speech process, which can be stopped safely."""
+    global active_tts_process
+    process = subprocess.Popen(["say", "-r", "190", text])
+    with tts_process_lock:
+        active_tts_process = process
+    try:
+        process.wait()
+    finally:
+        with tts_process_lock:
+            if active_tts_process is process:
+                active_tts_process = None
+
+
+def _speak_with_system_tts(text):
+    if platform.system() == "Darwin":
+        _speak_with_macos_say(text)
+    else:
+        _speak_with_pyttsx3(text)
+
+
+def start_tts_in_background(text):
+    """Start text-mode speech without blocking the next terminal prompt."""
+    global stop_voice_flag, active_pyttsx3_thread
+    if not has_tts_backend() or not tts_mode:
+        return
+    clean_text = _clean_tts_text(text)
+    if not clean_text:
+        return
+
+    stop_tts()
+    stop_voice_flag = False
+    speech_thread = threading.Thread(
+        target=_speak_with_system_tts,
+        args=(clean_text,),
+        daemon=True,
+        name="gnosis-tts",
+    )
+    with pyttsx3_lock:
+        active_pyttsx3_thread = speech_thread
+    speech_thread.start()
 
 
 async def speak_text(text):
     global stop_voice_flag, tts_mode, active_pyttsx3_engine, active_pyttsx3_thread
-    if not has_pyttsx3:
-        print(f"{Fore.YELLOW}Text-to-speech is unavailable because pyttsx3 is not installed.{Style.RESET_ALL}")
+    if not has_tts_backend():
+        print(f"{Fore.YELLOW}Text-to-speech is unavailable because no supported TTS backend is installed.{Style.RESET_ALL}")
         return
     if not (voice_mode or tts_mode):
         return
@@ -448,7 +545,7 @@ async def speak_text(text):
     if not clean_text:
         return
     try:
-        await asyncio.to_thread(_speak_with_pyttsx3, clean_text)
+        await asyncio.to_thread(_speak_with_system_tts, clean_text)
         return
     except Exception as e:
         if stop_voice_flag:
@@ -460,7 +557,7 @@ async def speak_text(text):
             with pyttsx3_lock:
                 active_pyttsx3_engine = None
             try:
-                await asyncio.to_thread(_speak_with_pyttsx3, clean_text)
+                await asyncio.to_thread(_speak_with_system_tts, clean_text)
                 return
             except Exception as e2:
                 print(f"{Fore.RED}pyttsx3 error after retry: {e2}{Style.RESET_ALL}")
@@ -483,35 +580,99 @@ def stream_response():
         pass
     print(f"{Fore.CYAN}Generating response...\n{Style.RESET_ALL}")
     complete_response = ""
-    if unfiltered_mode:
-        chosen_model = MODELS["unfiltered"]
-    elif reasoning_mode:
-        chosen_model = MODELS["search"]
-    else:
-        chosen_model = MODELS["main"]
+    chosen_model = _selected_model()
     response_stream = ollama.chat(model=chosen_model, messages=assistant_convo, stream=True)
-    last_spoken_index = 0
-    response_done = False
-    async def speak_in_background():
-        nonlocal last_spoken_index, response_done
-        while not response_done or last_spoken_index < len(complete_response):
-            await asyncio.sleep(0.2)
-            if last_spoken_index < len(complete_response):
-                new_text = complete_response[last_spoken_index:]
-                last_spoken_index = len(complete_response)
-                await speak_text(new_text)
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    speech_task = loop.create_task(speak_in_background())
     for chunk in response_stream:
         text_chunk = chunk["message"]["content"]
         complete_response += text_chunk
         print(f"{Fore.GREEN}{text_chunk}{Style.RESET_ALL}", end="", flush=True)
-    response_done = True
     print()
-    loop.run_until_complete(speech_task)
-    loop.close()
+    if tts_mode and not voice_mode:
+        start_tts_in_background(complete_response)
+    elif voice_mode:
+        asyncio.run(speak_text(complete_response))
     assistant_convo.append({"role": "assistant", "content": complete_response})
+    return complete_response
+
+
+def _selected_model():
+    """Return the model selected by the current shared application modes."""
+    if unfiltered_mode:
+        return MODELS["unfiltered"]
+    if reasoning_mode:
+        return MODELS["search"]
+    if coding_mode:
+        return MODELS["coding"]
+    return MODELS["main"]
+
+
+def chat_response(prompt, on_chunk=None):
+    """Process one chat message for any interface.
+
+    This is the programmatic counterpart to the terminal loop: it owns
+    conversation state, context enrichment, mode selection, streaming, and
+    agent-memory updates.  ``on_chunk`` receives text as it arrives, making
+    it suitable for GUI clients without giving them access to Ollama directly.
+    """
+    if ollama is None:
+        raise RuntimeError("Ollama client is unavailable. Please install and configure ollama.")
+
+    prompt = (prompt or "").strip()
+    if not prompt:
+        return ""
+
+    stop_tts()
+    processed_prompt = process_search_tags(prompt)
+
+    if web_search_mode:
+        update_user_notes_softly(processed_prompt, [])
+        search_results = perform_hybrid_search(processed_prompt)
+        assistant_convo.append({
+            "role": "system",
+            "content": enhance_conversation_with_search(processed_prompt, search_results),
+        })
+        if search_results:
+            summaries = [
+                summarize_text(result.get("content", ""), max_sentences=2)
+                for result in search_results[:3]
+                if result and result.get("content")
+            ]
+            if summaries:
+                record_to_knowledge_base(processed_prompt, "\n\n".join(summaries))
+    else:
+        context_info = [get_datetime_context()]
+        user_context = get_user_context()
+        if user_context != "No user profile information available":
+            context_info.append(f"User context: {user_context}")
+        assistant_convo.append({"role": "system", "content": f"[Context: {' | '.join(context_info)}]"})
+
+    persona_prompt = get_persona_system_prompt()
+    if persona_prompt:
+        assistant_convo.append({"role": "system", "content": persona_prompt})
+    assistant_convo.append({"role": "user", "content": processed_prompt})
+
+    try:
+        trim_conversation()
+    except Exception:
+        pass
+
+    complete_response = ""
+    for chunk in ollama.chat(model=_selected_model(), messages=assistant_convo, stream=True):
+        text_chunk = chunk.get("message", {}).get("content", "")
+        if not text_chunk:
+            continue
+        complete_response += text_chunk
+        if on_chunk:
+            on_chunk(text_chunk)
+
+    assistant_convo.append({"role": "assistant", "content": complete_response})
+    analyze_conversation_patterns(processed_prompt, complete_response)
+    if current_agent and complete_response:
+        save_agent_memory(current_agent, f"User: {processed_prompt[:100]}... Response: {complete_response[:200]}...")
+        if should_save_to_knowledge_base(processed_prompt, complete_response):
+            save_conversation_insights(current_agent, processed_prompt, complete_response)
+    if tts_mode and not voice_mode:
+        start_tts_in_background(complete_response)
     return complete_response
 
 # -------------------------------------
@@ -2073,16 +2234,117 @@ def audit_repository():
     ])
 
 
-def make_selfimprove_prompt(audit_summary, stage):
-    return (
+def collect_repository_files_for_prompt(root):
+    include_full_files = os.getenv("SELFIMPROVE_INCLUDE_FULL_FILES", "0") == "1"
+    if not include_full_files:
+        return None
+
+    allowed_exts = {".py", ".md", ".txt", ".json", ".yml", ".yaml", ".ini", ".cfg", ".toml"}
+    max_total_bytes = int(os.getenv("SELFIMPROVE_MAX_PROMPT_BYTES", "800000"))
+    max_file_bytes = int(os.getenv("SELFIMPROVE_MAX_FILE_BYTES", "150000"))
+    max_files = int(os.getenv("SELFIMPROVE_MAX_FILES", "30"))
+
+    files = []
+    total_bytes = 0
+    skipped = 0
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        if '.git' in dirnames:
+            dirnames.remove('.git')
+        if 'venv' in dirnames:
+            dirnames.remove('venv')
+        if '__pycache__' in dirnames:
+            dirnames.remove('__pycache__')
+
+        for filename in sorted(filenames):
+            if filename.startswith('.'):
+                continue
+
+            ext = os.path.splitext(filename)[1].lower()
+            if ext not in allowed_exts:
+                continue
+
+            path = os.path.join(dirpath, filename)
+            try:
+                size = os.path.getsize(path)
+                if size > max_file_bytes or total_bytes + size > max_total_bytes:
+                    skipped += 1
+                    continue
+
+                with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+
+                relpath = os.path.relpath(path, root)
+                files.append((relpath, content))
+                total_bytes += len(content)
+
+                if len(files) >= max_files or total_bytes >= max_total_bytes:
+                    break
+            except Exception:
+                skipped += 1
+                continue
+
+        if len(files) >= max_files or total_bytes >= max_total_bytes:
+            break
+
+    if not files:
+        return None
+
+    formatted = [
+        "Repository files included in this prompt for a full code review:",
+        f"Total files included: {len(files)}",
+        f"Total bytes included: {total_bytes}",
+        ""
+    ]
+    for relpath, content in files:
+        formatted.append(f"### {relpath}\n```\n{content}\n```\n")
+
+    if skipped:
+        formatted.append(f"NOTE: {skipped} files were skipped due to size or prompt limits.")
+
+    return "\n".join(formatted)
+
+
+def load_todo_list(root):
+    todo_path = os.path.join(root, "TODO.md")
+    if not os.path.exists(todo_path):
+        return None
+    try:
+        with open(todo_path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read().strip()
+        return content if content else None
+    except Exception:
+        return None
+
+
+def make_selfimprove_prompt(audit_summary, stage, todo_text=None, repo_files_text=None):
+    prompt = (
         f"You are an autonomous self-improvement assistant for a Python repository. "
         f"The repository audit is:\n\n{audit_summary}\n\n"
-        f"Based on that audit, please {stage}. "
-        "Answer clearly and concisely in markdown format."
     )
+    if repo_files_text:
+        prompt += (
+            "The full contents of selected repository files are included below to support a full code review and update. "
+            "Use them as the authoritative source of truth for identifying issues, suggestions, and code changes.\n\n"
+            f"{repo_files_text}\n\n"
+        )
+    if todo_text:
+        prompt += (
+            "The repository TODO list from TODO.md is included below. "
+            "Use it to identify self-improvement opportunities and prioritize actions based on existing planned tasks.\n\n"
+            f"{todo_text}\n\n"
+        )
+    if repo_files_text:
+        prompt += (
+            "The full contents of selected repository files are included below to support a full code review and update. "
+            "Use them as the authoritative source of truth for identifying issues, suggestions, and code changes.\n\n"
+            f"{repo_files_text}\n\n"
+        )
+    prompt += f"Based on that audit, please {stage}. Answer clearly and concisely in markdown format."
+    return prompt
 
 
-def plan_self_improvements(audit_summary):
+def plan_self_improvements(audit_summary, todo_text=None, repo_files_text=None):
     if ollama is None:
         return (
             "1. Audit repository structure and code quality.\n"
@@ -2092,7 +2354,11 @@ def plan_self_improvements(audit_summary):
             "5. Validate the repository by compiling Python files."
         )
 
-    prompt = make_selfimprove_prompt(audit_summary, "produce a numbered repository improvement plan with verification criteria for each step")
+    prompt = make_selfimprove_prompt(
+        audit_summary,
+        "produce a numbered repository improvement plan with verification criteria for each step",
+        repo_files_text=repo_files_text,
+    )
     try:
         response = ollama.chat(model=MODELS['main'], messages=[
             {"role": "system", "content": prompt},
@@ -2103,14 +2369,26 @@ def plan_self_improvements(audit_summary):
         return f"Unable to generate a plan automatically: {e}"
 
 
-def verify_improvement_plan(audit_summary, plan_text):
+def verify_improvement_plan(audit_summary, plan_text, repo_files_text=None):
     if ollama is None:
         return "Model unavailable; plan verification skipped."
 
     prompt = (
         f"You are verifying a repository improvement plan for a Python project. "
         f"Repository audit:\n\n{audit_summary}\n\n"
+    )
+    if todo_text:
+        prompt += (
+            "The repository TODO list from TODO.md is included below for context. "
+            "Use it to confirm the plan aligns with current project priorities.\n\n"
+            f"{todo_text}\n\n"
+        )
+    prompt += (
         f"Proposed plan:\n\n{plan_text}\n\n"
+    )
+    if repo_files_text:
+        prompt += f"Repository file contents:\n\n{repo_files_text}\n\n"
+    prompt += (
         "Determine if the plan is feasible, complete, and aligned with the audit. "
         "If issues exist, list them. Otherwise, confirm readiness for development."
     )
@@ -2124,7 +2402,7 @@ def verify_improvement_plan(audit_summary, plan_text):
         return f"Unable to verify plan automatically: {e}"
 
 
-def develop_self_improvements(audit_summary, plan_text):
+def develop_self_improvements(audit_summary, plan_text, repo_files_text=None):
     if ollama is None:
         return "Development output unavailable because the Ollama client is unavailable."
 
@@ -2132,6 +2410,10 @@ def develop_self_improvements(audit_summary, plan_text):
         f"You are writing development guidance for a Python repository improvement plan. "
         f"Repository audit:\n\n{audit_summary}\n\n"
         f"Improvement plan:\n\n{plan_text}\n\n"
+    )
+    if repo_files_text:
+        prompt += f"Repository file contents:\n\n{repo_files_text}\n\n"
+    prompt += (
         "Describe concrete development steps and any required code changes or new files. "
         "Keep the guidance structured and easy to follow."
     )
@@ -2177,17 +2459,26 @@ def perform_self_improve():
     print(audit_text)
     record_to_knowledge_base('selfimprove_audit.txt', audit_text)
 
-    plan_text = plan_self_improvements(audit_text)
+    include_files = os.getenv("SELFIMPROVE_INCLUDE_FULL_FILES", "0") == "1"
+    repo_files_text = None
+    if include_files:
+        root = os.path.dirname(__file__)
+        repo_files_text = collect_repository_files_for_prompt(root)
+        if repo_files_text is None:
+            repo_files_text = "Repository file content inclusion was enabled, but no files could be included within configured prompt limits."
+            print(f"{Fore.YELLOW}NOTE: {repo_files_text}{Style.RESET_ALL}")
+
+    plan_text = plan_self_improvements(audit_text, repo_files_text=repo_files_text)
     print(f"{Fore.YELLOW}--- Proposed Improvement Plan ---{Style.RESET_ALL}")
     print(plan_text)
     record_to_knowledge_base('selfimprove_plan.txt', plan_text)
 
-    verification_text = verify_improvement_plan(audit_text, plan_text)
+    verification_text = verify_improvement_plan(audit_text, plan_text, repo_files_text=repo_files_text)
     print(f"{Fore.YELLOW}--- Plan Verification ---{Style.RESET_ALL}")
     print(verification_text)
     record_to_knowledge_base('selfimprove_verification.txt', verification_text)
 
-    development_text = develop_self_improvements(audit_text, plan_text)
+    development_text = develop_self_improvements(audit_text, plan_text, repo_files_text=repo_files_text)
     print(f"{Fore.YELLOW}--- Development Output ---{Style.RESET_ALL}")
     print(development_text)
     record_to_knowledge_base('selfimprove_development.txt', development_text)
@@ -2534,7 +2825,9 @@ def main():
                 continue
         else:
             prompt = input(f"{Fore.BLUE}{get_fun_prompt()}{Style.RESET_ALL}")
-        stop_voice(disable_voice=False)
+        # A submitted message means the user is ready to move on; interrupt
+        # any background TTS before processing it.
+        stop_tts()
         # Toggle reasoning mode
         if prompt.lower() == "/reason":
             reasoning_mode = not reasoning_mode
@@ -2580,6 +2873,13 @@ def main():
             continue
         # Toggle TTS mode
         if prompt.lower() == "/tts":
+            if not has_tts_backend():
+                print(
+                    f"{Fore.RED}TTS is unavailable because pyttsx3 is not installed in "
+                    f"{sys.executable}.{Style.RESET_ALL}"
+                )
+                print("Install project dependencies with: ./venv/bin/python -m pip install -r requirements.txt")
+                continue
             tts_mode = not tts_mode
             if tts_mode and voice_mode:
                 voice_mode = False  # Ensure only one audio mode is active
