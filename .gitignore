@@ -3,3 +3,10 @@ tutor_paths/
 user_details.log
 conversations/
 convos/
+tests/__pycache__
+scripts/__pycache__
+agent_memory/*
+agent_knowledge/*
+__pycache__
+news_cache.json
+user_details.log
