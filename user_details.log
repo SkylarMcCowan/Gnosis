@@ -1,10 +1,11 @@
 # User Profile - Edit this file to customize your AI assistant
 # Lines starting with # are comments
 
-name: User
-location: Location
-timezone: Timezone
-preferences: direct
-interests: 
-recent_explorations: 
-notes: 
+name: Skylar
+location: Tucson, AZ
+timezone: MST (Mountain Standard Time)
+persona: direct
+preferences: direct, collaborative, practical, detail oriented
+interests: Science, technology, outdoor activities, Dogs, Software development, Meditaiton, Philosophy, Psychology, History, Art, Music
+recent_explorations: Go, Tea, Art, Art, Go, Nasa, Ai, History, Tea
+notes: Learning style: procedural_learner

@@ -3,7 +3,8 @@ import time
 from colorama import Fore, Style
 # Add necessary imports
 import asyncio
-from webagent import ollama, assistant_convo, speak_text, unfiltered_mode, reasoning_mode, MODELS, voice_mode, tts_mode
+import webagent
+from webagent import ollama, speak_text, MODELS
 
 MAJOR_ARCANA = [
     "0. The Fool", "I. The Magician", "II. The High Priestess", "III. The Empress",
@@ -105,9 +106,9 @@ def tarot_reading():
         return
 
     # Interpretation via AI model
-    if unfiltered_mode:
+    if webagent.context.unfiltered_mode:
         chosen_model = MODELS["unfiltered"]
-    elif reasoning_mode:
+    elif webagent.context.reasoning_mode:
         chosen_model = MODELS["search"]
     else:
         chosen_model = MODELS["main"]
@@ -119,10 +120,10 @@ def tarot_reading():
         f"Please provide a cohesive, mystical interpretation of how these cards might answer the question."
     )
 
-    assistant_convo.append({"role": "user", "content": interpret_prompt})
+    webagent.context.assistant_convo.append({"role": "user", "content": interpret_prompt})
 
     print(f"{Fore.CYAN}Generating interpretation from the model {chosen_model}...\n")
-    response_stream = ollama.chat(model=chosen_model, messages=assistant_convo, stream=True)
+    response_stream = ollama.chat(model=chosen_model, messages=webagent.context.assistant_convo, stream=True)
 
     final_text = ""
     for chunk in response_stream:
@@ -131,8 +132,8 @@ def tarot_reading():
         print(f"{Fore.GREEN}{text_chunk}", end="", flush=True)
 
     print()
-    assistant_convo.append({"role": "assistant", "content": final_text})
+    webagent.context.assistant_convo.append({"role": "assistant", "content": final_text})
     print(f"\n{Fore.MAGENTA}--- End of Interpretation ---\n")
 
-    if voice_mode or tts_mode:
+    if webagent.context.voice_mode or webagent.context.tts_mode:
         asyncio.run(speak_text(final_text))

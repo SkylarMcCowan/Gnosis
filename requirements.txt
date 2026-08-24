@@ -4,9 +4,12 @@ beautifulsoup4==4.12.3
 colorama==0.4.6
 pytest
 SpeechRecognition==3.10.0
+standard-aifc; python_version >= "3.13"
+audioop-lts; python_version >= "3.13"
+setuptools; python_version >= "3.12"
+pyaudio
 pyttsx3
 requests==2.31.0
-lxml==4.9.3
-duckduckgo-search==3.8.4
+lxml>=5.2.2; platform_system != "Darwin" or python_version > "3.8"
 yt-dlp
 PyQt6>=6.6.1

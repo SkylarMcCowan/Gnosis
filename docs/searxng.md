@@ -31,8 +31,8 @@ curl -s "${SEARXNG_URL:-https://search.lozdev.com}/search?q=python&format=json" 
 
 Usage
 -----
-- Start `webagent.py` (or `webagent_gui.py`) as you normally do.
-- Toggle web search mode inside the agent with the `/websearch` command and enter a query.
+- Start `webagent.py` (or `webagent_gui.py`) as you normally do — web search is on by default, and the model decides per message whether a search is warranted.
+- Use `/websearch` to turn it off (e.g. to force answers from the model's own knowledge only) and back on again.
 - The agent will try SearxNG first and fall back to other sources if no usable results are returned.
 
 Troubleshooting

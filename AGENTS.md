@@ -24,8 +24,9 @@ The GUI exposes the same assistant backend with model toggles, web search mode, 
 Optional features depend on additional packages:
 - `SpeechRecognition` enables voice input
 - `edge-tts` enables text-to-speech
-- `duckduckgo-search` enables live DuckDuckGo search
 - `yt-dlp` enables YouTube downloads
+
+Live web search uses a SearxNG instance (`SEARXNG_URL` env var) with an offline contextual fallback when it's unreachable.
 
 ## Agent system
 Specialized agent personas are selected by `/job` and are defined in `webagent.py` under `AVAILABLE_AGENTS`.
@@ -41,6 +42,7 @@ Valid agent keys:
 - `comedian` — Digital Comedian
 - `debugger` — Code Debugger
 - `counselor` — Digital Counselor
+- `scheduler` — Cron Scheduler (see `docs/cron.md`); while active, the model may autonomously create/list/remove real cron tasks via `run_scheduler_agent_step`
 
 ### Agent switching
 - `/job <agent_name>` — switch to one specialized persona
@@ -65,7 +67,8 @@ General commands:
 Feature commands:
 - `/archives [topic]` — search the local `knowledge_base`
 - `/askwiki [query]` — fetch Wikipedia content and answer the query
-- `/historian` — summarize topics from `knowledge_base`
+- `/historian` — dedupe/topic-sort `knowledge_base`, merge saved conversations into it, and clean `agent_memory` (see `docs/historian.md`); `/historian preview` previews without changing anything
+- `/cron` — create, list, and remove real system crontab entries that run a saved prompt or a whitelisted feature on a schedule (see `docs/cron.md`); `/job scheduler` lets the model do this conversationally instead
 - `/tutor [topic]` — generate a learning path for the topic
 - `/showpath [topic]` — display saved learning paths
 - `/delpath [topic]` — delete a saved learning path

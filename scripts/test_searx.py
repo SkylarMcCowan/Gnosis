@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Simple SearxNG + DuckDuckGo availability test script.
+"""Simple SearxNG availability test script.
 
 Run: python scripts/test_searx.py
 """
 import os
 import requests
-from pathlib import Path
 
 SEARX = os.environ.get('SEARXNG_URL', 'https://search.lozdev.com').rstrip('/')
 
@@ -18,18 +17,5 @@ try:
         print(f'SearxNG: ERROR (status {res.status_code})')
 except Exception as e:
     print(f'SearxNG: FAILED ({e})')
-
-# DuckDuckGo availability (duckduckgo-search)
-try:
-    from duckduckgo_search import DDGS
-    print('duckduckgo-search package: installed')
-    try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text('healthcheck', max_results=1))
-            print('DuckDuckGo API: OK')
-    except Exception as e:
-        print(f'DuckDuckGo API: FAILED ({e})')
-except ImportError:
-    print('duckduckgo-search package: NOT INSTALLED')
 
 print('\nDone.')
