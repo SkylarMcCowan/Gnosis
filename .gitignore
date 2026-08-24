@@ -3,7 +3,6 @@ tutor_paths/
 user_details.log
 conversations/
 convos/
-scripts
 agent_memory/*
 agent_knowledge/*
 cron/
