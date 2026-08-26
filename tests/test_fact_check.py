@@ -267,3 +267,122 @@ class TestFlagUnverifiedDollarFigures:
         )
 
         assert result == "[Unverified figure] $308.67 does not appear in any evidence source and may be fabricated."
+
+
+class TestFlagFabricatedNextMatchClaim:
+    """Regression tests for the deterministic next-match check bolted onto
+    fact_check_answer's output. Real bug: _soccer_evidence_item explicitly
+    marks the evidence "Next match: UNKNOWN ... this is a PAST match, NOT
+    the next one" when ESPN has no upcoming fixture - and the model still
+    stated a specific next-match date and opponent anyway, live-tested in
+    the real chat pipeline (not just an isolated prompt, where the same
+    instruction worked). A forceful in-evidence instruction wasn't reliable
+    enough on its own, the same lesson _flag_unverified_dollar_figures
+    already learned about this model tier - exact marker/date-pattern
+    presence is a check code can do perfectly.
+    """
+
+    _UNKNOWN_EVIDENCE = [{
+        "content": (
+            "Manchester United. Last result: Hull City 2-0 Manchester United (English Premier League, "
+            "Full Time) on 2026-08-22T11:30Z. Next match: UNKNOWN - no upcoming fixture is scheduled in "
+            "the available data. If asked what team plays next or when the next match is, you must say "
+            "this information is not currently available. The 'Last result' above is a PAST match that "
+            "has already happened - it is NOT the next match, even though it is the only match listed."
+        ),
+    }]
+
+    def test_flags_a_stated_next_match_date_when_evidence_says_unknown(self):
+        answer = "Manchester United's next scheduled game is against Hull City on 2026-08-29 at 11:30 AM."
+        flags = webagent._flag_fabricated_next_match_claim(answer, self._UNKNOWN_EVIDENCE)
+        assert len(flags) == 1
+        assert flags[0].startswith("[Unverified]")
+
+    def test_flags_a_month_name_date_too(self):
+        answer = "Their next match is against Ipswich Town on August 30."
+        assert len(webagent._flag_fabricated_next_match_claim(answer, self._UNKNOWN_EVIDENCE)) == 1
+
+    def test_does_not_flag_when_the_answer_correctly_says_it_does_not_know(self):
+        answer = "The next scheduled match for Manchester United is currently unknown."
+        assert webagent._flag_fabricated_next_match_claim(answer, self._UNKNOWN_EVIDENCE) == []
+
+    def test_does_not_flag_without_the_unknown_marker_in_evidence(self):
+        """A real next match WAS found - no reason to flag anything."""
+        evidence = [{"content": "Next match: Manchester United vs Arsenal on 2026-08-28."}]
+        answer = "Their next match is against Arsenal on August 28."
+        assert webagent._flag_fabricated_next_match_claim(answer, evidence) == []
+
+    def test_does_not_flag_an_unrelated_answer(self):
+        answer = "Manchester United lost to Hull City 2-0."
+        assert webagent._flag_fabricated_next_match_claim(answer, self._UNKNOWN_EVIDENCE) == []
+
+    def test_fact_check_answer_appends_the_deterministic_flag(self, fake_ollama_chat):
+        fake_ollama_chat.reply = "- Next match is Hull City on 2026-08-29. [Corroborated]"
+
+        result = webagent.fact_check_answer(
+            "Manchester United's next match is against Hull City on 2026-08-29.",
+            self._UNKNOWN_EVIDENCE, user_prompt="who do they play next?",
+        )
+
+        assert "[Corroborated]" in result
+        assert "[Unverified]" in result
+        assert "no scheduled next match" in result
+
+
+class TestFlagUnsupportedLiveLookupClaim:
+    """Regression tests for the deterministic check that runs when
+    fact_check_answer gets literally zero evidence. Real, live-reported
+    bug: asked "who does mancester united play next" right after
+    live.soccer_result's tool call was wrongly refused by the small
+    selector model ("outside scope"), the chat model invented an opponent
+    and a date (Southampton, September 5, 2026) with nothing behind it at
+    all. fact_check_answer used to return "" outright whenever evidence
+    was empty - not just skipping the LLM checker pass (which genuinely
+    has nothing to compare against) but also the two deterministic flags
+    (_flag_unverified_dollar_figures, _flag_fabricated_next_match_claim),
+    even though neither of those actually needs the LLM and both would
+    otherwise have something useful to say. Both of those still can't
+    fire here (they compare a claim against evidence content that must
+    exist to be scanned), so this is a third, separate check scoped to
+    exactly this gap: a live-lookup-shaped question, zero evidence, and an
+    answer that states something specific anyway.
+    """
+
+    def test_flags_a_fabricated_next_match_date_with_zero_evidence(self):
+        answer = "Manchester United's next scheduled game is against Southampton on September 5, 2026."
+        flag = webagent._flag_unsupported_live_lookup_claim(answer, "who does mancester united play next")
+        assert flag.startswith("[Unverified]")
+        assert "No live data was actually retrieved" in flag
+
+    def test_flags_a_fabricated_score_with_zero_evidence(self):
+        answer = "Manchester United won against Hull City with a score of 2-0."
+        flag = webagent._flag_unsupported_live_lookup_claim(answer, "did Man United win against Hull City?")
+        assert flag.startswith("[Unverified]")
+
+    def test_flags_a_fabricated_price_with_zero_evidence(self):
+        answer = "MSFT is currently trading at $487.31."
+        flag = webagent._flag_unsupported_live_lookup_claim(answer, "what is the stock price of MSFT?")
+        assert flag.startswith("[Unverified]")
+
+    def test_does_not_flag_a_non_live_lookup_prompt(self):
+        """The check is scoped to weather/stock/soccer-shaped questions -
+        an ordinary question with no live-lookup shape and no evidence
+        just has nothing this check is meant to catch."""
+        answer = "The meeting is on September 5, 2026."
+        assert webagent._flag_unsupported_live_lookup_claim(answer, "when is our next meeting?") == ""
+
+    def test_does_not_flag_a_live_lookup_answer_with_no_specific_claim(self):
+        answer = "I couldn't find any information about their next match."
+        assert webagent._flag_unsupported_live_lookup_claim(answer, "who does Man United play next?") == ""
+
+    def test_fact_check_answer_returns_the_flag_and_skips_the_model_call_entirely(self, fake_ollama_chat):
+        result = webagent.fact_check_answer(
+            "Manchester United's next scheduled game is against Southampton on September 5, 2026.",
+            [], user_prompt="who does mancester united play next",
+        )
+
+        assert result.startswith("[Unverified]")
+        assert fake_ollama_chat.calls == []  # zero evidence means nothing for an LLM pass to compare against
+
+    def test_fact_check_answer_still_returns_empty_for_a_non_live_lookup_question_with_no_evidence(self, fake_ollama_chat):
+        assert webagent.fact_check_answer("Some answer.", [], user_prompt="a question") == ""

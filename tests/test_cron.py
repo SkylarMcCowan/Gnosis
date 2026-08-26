@@ -28,6 +28,25 @@ def test_cron_add_rejects_unknown_feature(isolated_data_dir, no_real_crontab):
     assert "Unknown feature" in error
 
 
+def test_save_cron_tasks_returns_true_on_a_real_write(isolated_data_dir):
+    assert webagent._save_cron_tasks({"abc123": {"schedule": "0 9 * * *"}}) is True
+    assert webagent._load_cron_tasks() == {"abc123": {"schedule": "0 9 * * *"}}
+
+
+def test_save_cron_tasks_returns_false_and_warns_on_failure(isolated_data_dir, monkeypatch, capsys):
+    """Real, reported gap: a failed metadata write used to be a bare
+    except OSError: pass - a real crontab entry could exist with no
+    matching Gnosis record and nothing would say so."""
+    def _raise(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(webagent, "open", _raise, raising=False)
+    result = webagent._save_cron_tasks({"abc123": {"schedule": "0 9 * * *"}})
+
+    assert result is False
+    assert "Failed to save cron task metadata" in capsys.readouterr().out
+
+
 def test_cron_edit_updates_schedule_in_place(isolated_data_dir, no_real_crontab):
     task_id, _ = webagent.cron_add(["0", "9", "*", "*", "*"], "feature", "news")
     ok, error = webagent.cron_edit(task_id, schedule_fields=["30", "10", "*", "*", "*"])

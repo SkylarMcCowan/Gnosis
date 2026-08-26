@@ -21,17 +21,24 @@ from core import config as core_config
 from core.events import (
     events, SEARCH_COMPLETED, TASK_COMPLETED, SKILL_CREATED,
     KNOWLEDGE_UPDATED, MEMORY_CREATED, TEST_PASSED, TEST_FAILED,
+    TOOL_SELECTION_MADE, TOOL_EXECUTION_COMPLETED, APP_STARTED,
 )
 from core.activity_log import record_activity
 from core.command_router import CommandRouter
 from core.context import context
 from core.exceptions import ModelUnavailableError
 from core.orchestrator import Orchestrator
+from core import subscriptions
+from tools.base import Permission
 from tools.registry import registry as tool_registry
 from tools.web.search import WebSearchTool
 from tools.web.fetch import WebFetchTool
+from tools.live.weather import LiveWeatherTool
+from tools.live.stock import LiveStockQuoteTool
+from tools.live.soccer import LiveSoccerResultTool
 from tools.knowledge.search import KnowledgeSearchTool
 from tools.knowledge.write import KnowledgeWriteTool
+from tools.subscriptions.list import SubscriptionsListTool
 from tools.scheduler.add import CronAddTool
 from tools.scheduler.edit import CronEditTool
 from tools.scheduler.list import CronListTool
@@ -836,6 +843,18 @@ def _chat_response_impl(prompt, on_chunk):
             context_info.append(f"User context: {user_context}")
         context.assistant_convo.append({"role": "system", "content": f"[Context: {' | '.join(context_info)}]"})
 
+    _emit_status("Checking whether a local capability would help...")
+    tool_action = _select_tool_action(processed_prompt)
+    if tool_action.get("tool"):
+        _emit_status(f"Using {tool_action['tool']}...")
+        tool_summary = _execute_tool_action(tool_action)
+        if tool_summary:
+            print(f"{Fore.CYAN}🛠️  Model selected tool: {tool_action['tool']}{Style.RESET_ALL}")
+            context.assistant_convo.append({
+                "role": "system",
+                "content": f"Additional context from a Gnosis capability you chose to use:\n{tool_summary}",
+            })
+
     persona_prompt = get_persona_system_prompt()
     if persona_prompt:
         context.assistant_convo.append({"role": "system", "content": persona_prompt})
@@ -1257,6 +1276,12 @@ def _extract_fact_tokens(content):
     return tokens
 
 
+# Evidence sources whose truthfulness_confidence is fixed by construction
+# (a direct read from a live, authoritative API) rather than derived from
+# corroboration math meant for scraped web pages - see apply_corroboration.
+_AUTHORITATIVE_EVIDENCE_PROVIDERS = {"open-meteo", "yahoo-finance", "espn"}
+
+
 def apply_corroboration(evidence):
     """Blend cross-source agreement into truthfulness_confidence.
 
@@ -1292,6 +1317,16 @@ def apply_corroboration(evidence):
         corroboration_confidence = min(100, 40 + 30 * len(corroborating))
         item["corroboration_confidence"] = corroboration_confidence
         item["corroborating_domains"] = sorted(corroborating)
+        if item.get("search_provider") in _AUTHORITATIVE_EVIDENCE_PROVIDERS:
+            # A live API reading's confidence is fixed by design (see
+            # _weather_evidence_item/_stock_evidence_item/_soccer_evidence_item),
+            # not corroboration-derived - a real, live-reported bug: recomputing
+            # it here diluted a correct live soccer result's fixed 90 down to
+            # ~60 (0.4*90 + 0.6*40, zero shared fact-tokens with unrelated
+            # generic web snippets) once combined with other evidence,
+            # letting noisy, unrelated search results outrank a correct
+            # answer and produce a confidently wrong final reply.
+            continue
         source_quality = item.get("source_quality_confidence", item.get("truthfulness_confidence", 35))
         item["truthfulness_confidence"] = round(0.4 * source_quality + 0.6 * corroboration_confidence)
     return evidence
@@ -1514,6 +1549,269 @@ def _research_action(prompt, evidence, searches_used):
     return {"action": "answer", "reason": "The planner did not request a valid additional search."}
 
 
+# The research-capable tools (web.search, web.fetch, knowledge.search, and
+# the live.* lookups) are deliberately excluded from open model selection
+# below - they go through _select_tool_actions instead (wired into
+# model_directed_web_research), which combines multiple free sources and
+# feeds the result through evidence scoring/fact-checking. Offering them
+# here too would just be a second, uncoordinated path to the same
+# capabilities with none of that pipeline behind it.
+_TOOL_ACTION_EXCLUDED_NAMES = {"web.search", "web.fetch", "knowledge.search", "live.weather", "live.stock_quote", "live.soccer_result"}
+
+
+def _available_tool_actions():
+    """SAFE-permission tools eligible for open model selection during an
+    ordinary chat turn. Scoped to Permission.SAFE (read-only capabilities;
+    see tools/base.py's Permission enum) - this is the first place that
+    field is actually enforced rather than just documented, deliberately:
+    nothing that mutates state (filesystem writes, cron add/edit/remove,
+    sandbox sessions, running shell/tests) should be reachable by a model
+    freely deciding what to do on an ordinary chat turn. Those stay
+    command-only, as today.
+    """
+    return [
+        tool for tool in tool_registry.list()
+        if tool.permission == Permission.SAFE and tool.name not in _TOOL_ACTION_EXCLUDED_NAMES
+    ]
+
+
+def _tool_action_catalog_text(catalog):
+    lines = []
+    for tool in catalog:
+        params = ", ".join(tool.parameters.keys()) or "no arguments"
+        lines.append(f"- {tool.name}: {tool.description} (arguments: {params})")
+    return "\n".join(lines)
+
+
+def _select_tool_action(prompt):
+    """Ask the model whether one of Gnosis's own SAFE, read-only
+    capabilities (repo audit, git status/diff, the crontab listing, the
+    knowledge base) would materially help answer this message - using the
+    same model-agnostic JSON protocol _research_action already uses for web
+    search, not Ollama's native tools= mechanism. Confirmed live before
+    building this: this app's default model (yi:6b) doesn't support
+    tools= at all (Ollama raises "does not support tools"), and even a
+    model that accepts the parameter isn't guaranteed to use it correctly
+    (qwen2.5-coder:7b took the schema but wrote its tool call out as plain
+    JSON text instead of a real structured tool_calls response). A plain
+    JSON decision that ordinary code parses works uniformly across every
+    local model this app runs, including the one most conversations
+    actually use.
+
+    Returns {"tool": name, "arguments": {...}} or {"tool": None}. Never
+    raises - any missing/unparseable/invalid response is treated as "no
+    tool needed," the same fail-safe default as an ordinary reply.
+
+    Deliberately skipped entirely (not just discouraged by the prompt) for
+    anything the weather/stock/soccer live-lookup bypasses already own -
+    live-tested this before shipping it: telling the model in-prompt "this
+    is separate from web search, don't pick anything here for a web-search-
+    shaped question" was not reliable enough on yi:6b, which sometimes
+    routed a plain "what's the weather today?" to knowledge.search anyway
+    despite that instruction. A deterministic code-level skip removes the
+    collision entirely instead of hoping a weak model's judgment holds -
+    the same lesson _flag_unverified_dollar_figures already learned about
+    this model tier.
+
+    Deliberately NOT also gated on requires_current_web_verification: that
+    check's word list ("now", "today", "current", ...) is broad by design
+    for its own purpose and would wrongly suppress a legitimate local-tool
+    question just for containing one of those common words (e.g. "is the
+    repo dirty right now?" - a real git.status case, caught by testing
+    this live before shipping it).
+    """
+    if ollama is None:
+        return {"tool": None}
+    if (
+        _looks_like_weather_query(prompt) or _looks_like_stock_query(prompt) or _looks_like_soccer_query(prompt)
+        or _looks_like_soccer_standings_query(prompt)
+    ):
+        return {"tool": None}
+    catalog = _available_tool_actions()
+    if not catalog:
+        return {"tool": None}
+    planner = (
+        "You are Gnosis. Most user messages need NO special capability - a plain conversational answer is "
+        "correct almost every time. Only pick one of the capabilities below in the rare case it would "
+        "clearly and specifically help.\n\n"
+        "Do NOT pick a capability for: general knowledge questions, casual conversation, jokes, opinions, "
+        "or math - those are handled elsewhere, never here.\n\n"
+        "ONLY consider a capability when the user is specifically asking about: this codebase/repository's "
+        "own files, tests, or code quality; this codebase's git status or uncommitted changes; a task they "
+        "scheduled with Gnosis; their current subscriptions (teams/topics/websites/weather they follow); or "
+        "something Gnosis may have researched and saved for them before.\n\n"
+        f"Capabilities:\n{_tool_action_catalog_text(catalog)}\n\n"
+        "Return ONLY valid JSON: {\"tool\": \"<name>\", \"arguments\": {...}, \"reason\": \"one short "
+        "sentence on why (or why not)\"} to use one of them, or {\"tool\": null, \"reason\": \"...\"} for "
+        "everything else (the default). The reason is logged for later review, not shown to the user - "
+        "always include a real one.\n\n"
+        f"User message: {prompt}"
+    )
+
+    def _chat_fn(messages):
+        response = model_chat(model=_selected_model(), messages=messages)
+        return response.get("message", {}).get("content", "")
+
+    decision = agent_dialogue.call_agent_json(_chat_fn, planner)
+    if not isinstance(decision, dict):
+        events.publish(TOOL_SELECTION_MADE, prompt=prompt, selected=[], reason="unparseable model response")
+        return {"tool": None}
+    reason = decision.get("reason") if isinstance(decision.get("reason"), str) else None
+    name = decision.get("tool")
+    selected_tool = next((tool for tool in catalog if tool.name == name), None)
+    if not isinstance(name, str) or selected_tool is None:
+        events.publish(TOOL_SELECTION_MADE, prompt=prompt, selected=[], reason=reason)
+        return {"tool": None}
+    arguments = decision.get("arguments")
+    arguments = arguments if isinstance(arguments, dict) else {}
+    # A real, reported failure: the model supplied an extra argument the
+    # tool doesn't accept at all (e.g. a "location" left over from a
+    # different tool it used the turn before) - tool_registry.execute
+    # raised a TypeError for the unexpected keyword (caught, so it failed
+    # safe, but wasted the turn and fell through to a worse fallback path).
+    # Dropping anything outside the tool's declared parameters is a hard,
+    # deterministic check code can do perfectly, the same reasoning as the
+    # missing-argument check below.
+    arguments = {key: value for key, value in arguments.items() if key in selected_tool.parameters}
+    # A real, reported failure: the model picked knowledge.search but left
+    # "arguments" empty, missing the required "topic" - the call reached
+    # tool_registry.execute and raised a TypeError there (caught, so it
+    # failed safe, but wasted the turn). Rejecting a call missing a
+    # required argument here is a hard, deterministic check code can do
+    # perfectly - better than attempting a call already known to fail.
+    missing = [param for param in selected_tool.parameters if param not in arguments]
+    if missing:
+        print(f"{Fore.YELLOW}ℹ️ Model selected '{name}' but didn't supply required argument(s) "
+              f"{missing} - treating as no tool selected.{Style.RESET_ALL}")
+        events.publish(
+            TOOL_SELECTION_MADE, prompt=prompt, selected=[],
+            reason=f"{reason or 'no reason given'} (rejected: missing argument(s) {missing})",
+        )
+        return {"tool": None}
+    events.publish(TOOL_SELECTION_MADE, prompt=prompt, selected=[name], reason=reason)
+    return {"tool": name, "arguments": arguments}
+
+
+def _cron_entry_schedule(entry):
+    """The 5 cron schedule fields from a parsed crontab entry - a
+    cron_list_entries() entry has no separate 'schedule' key, only the full
+    shell command_line the schedule is prefixed onto. Extracted so the
+    model is given the entry's real time instead of inventing one - a real,
+    live-observed gap: the first cut of this summary omitted the schedule
+    entirely, and the model filled in specific, plausible-sounding but
+    fabricated times ("at 08:00 AM") for tasks whose actual schedule was
+    never in its context at all."""
+    fields = (entry.get("command_line") or "").split(None, 5)
+    return " ".join(fields[:5]) if len(fields) >= 5 else "unknown"
+
+
+def _summarize_tool_result(name, result):
+    """Turn one of the SAFE tools' raw return values into a short, readable
+    text blurb for injecting into the model's context. Each tool has its
+    own return shape (a pre-formatted string, a list of tuples, a
+    (list, error) pair, a (returncode, stdout, stderr) triple) - a small
+    per-tool dispatch instead of one generic str(result), which would leak
+    Python repr/tuple syntax straight into what the model reads.
+    """
+    if name in {"repo.audit", "repo.audit_advanced"}:
+        return str(result)[:1500]
+    if name == "knowledge.search":
+        if not result:
+            return "No matching entries found in the knowledge base."
+        return "\n".join(f"- {filename}: {content[:200].strip()}" for filename, content in result[:5])
+    if name == "subscriptions.list":
+        if not result:
+            return "No subscriptions yet."
+        return "\n".join(f"- [{record['type'].capitalize()}] {record['name']}" for record in result)
+    if name == "cron.list":
+        entries, error = result
+        if error:
+            return error
+        if not entries:
+            return "No scheduled tasks."
+        return "\n".join(
+            f"#{i + 1} {entry.get('description') or '(no description)'} "
+            f"(schedule: {_cron_entry_schedule(entry)})"
+            for i, entry in enumerate(entries)
+        )
+    if name in {"git.status", "git.diff"}:
+        returncode, stdout, stderr = result
+        if returncode != 0:
+            return f"git command failed: {(stderr or '').strip()[:500]}"
+        return stdout.strip()[:1500] or "(clean - no output)"
+    return str(result)[:1500]
+
+
+def _confirm_cron_schedule_with_user(entries):
+    """Ask the user to confirm (or correct) their schedule instead of
+    trusting a small local model's plain-English translation of raw cron
+    syntax - live-tested and found unreliable before this existed: a real
+    "0 2 * * *" (every day at 2 AM) got narrated back as "the 1st, 3rd, 5th
+    of each month... at 2 AM." Rather than trying to make that translation
+    perfect, this shows the user the real cron expression for each task
+    (untranslated, so there's nothing to get wrong) and lets them say it's
+    right or state the correct time in their own words - the same blocking
+    clarify-question mechanism _research_action's planner already uses.
+
+    Returns the user's free-text answer, or None if there was nothing to
+    ask or they gave an empty reply.
+    """
+    if not entries:
+        return None
+    lines = [
+        f"- {entry.get('description') or '(no description)'}: {_cron_entry_schedule(entry)}"
+        for entry in entries
+    ]
+    question = (
+        "Here is your current scheduled-task list, in raw cron syntax (minute hour day-of-month month "
+        "day-of-week):\n" + "\n".join(lines) +
+        "\n\nIs this correct? If any of these should run at a different time, tell me which one and the "
+        "correct time - otherwise just confirm it looks right."
+    )
+    answers = agent_dialogue.ask_user_question([{"question": question, "options": None}])
+    return (answers.get(question) or "").strip() or None
+
+
+def _execute_tool_action(action):
+    """Run a _select_tool_action decision and return a short evidence-style
+    summary of the result, or None if no tool was selected or it failed.
+    Failures are swallowed, not raised - a bad tool choice or a runtime
+    error (e.g. a malformed regex the model supplied as knowledge.search's
+    topic) should never break the chat turn, just mean no extra context
+    gets added this time.
+
+    cron.list gets one extra step: see _confirm_cron_schedule_with_user for
+    why its result isn't just handed straight to the answering model like
+    every other tool's.
+    """
+    name = action.get("tool")
+    if not name:
+        return None
+    try:
+        result = tool_registry.execute(name, **action.get("arguments", {}))
+    except Exception as error:
+        print(f"{Fore.YELLOW}ℹ️ Tool '{name}' selected by the model failed: {error}{Style.RESET_ALL}")
+        events.publish(
+            TOOL_EXECUTION_COMPLETED, tool=name, arguments=action.get("arguments", {}),
+            success=False, error=str(error),
+        )
+        return None
+    events.publish(TOOL_EXECUTION_COMPLETED, tool=name, arguments=action.get("arguments", {}), success=True, error=None)
+    summary = f"[{name}] {_summarize_tool_result(name, result)}"
+    if name == "cron.list":
+        # The real schedule data above must stay in the summary, not be
+        # replaced by the confirmation - a real, live-tested regression:
+        # returning only "the user said it's correct" left the answering
+        # model with no actual task data at all, and it hallucinated a
+        # completely fictional task list to answer with anyway.
+        entries, error = result
+        if not error and entries:
+            confirmation = _confirm_cron_schedule_with_user(entries)
+            if confirmation:
+                summary += f"\nThe user reviewed this schedule and said: {confirmation}"
+    return summary
+
+
 def _deep_think_research_plan(prompt):
     """Ask the model for several distinct research angles up front.
 
@@ -1701,7 +1999,7 @@ def fetch_current_weather(location_query):
         return None
 
 
-def _weather_evidence_item(prompt):
+def _weather_evidence_item(prompt, location=None):
     """A real-time, single-source evidence item for the specific case a
     noisy generic web search snippet cannot reliably answer: what the
     current temperature/conditions actually are right now. Deliberately
@@ -1710,10 +2008,21 @@ def _weather_evidence_item(prompt):
     reading is stale within the hour; polluting it would misinform anyone
     (e.g. Historian) who later reads that file expecting durable evidence.
     Returns None if this isn't a weather query or the live lookup fails,
-    so the caller falls back to ordinary research unchanged."""
-    if not _looks_like_weather_query(prompt):
-        return None
-    weather = fetch_current_weather(_weather_location_query(prompt))
+    so the caller falls back to ordinary research unchanged.
+
+    `location`, when given, skips regex detection/extraction entirely and
+    looks up that location directly - used by the live.weather tool, whose
+    argument comes from the model (with full conversation context), not
+    from parsing the raw prompt text. See _select_tool_actions's docstring
+    for why: regex phrasing coverage for "what's the weather" turned into
+    an unwinnable game of whack-a-mole, the same lesson learned the hard
+    way for stock and soccer queries before this existed.
+    """
+    if location is None:
+        if not _looks_like_weather_query(prompt):
+            return None
+        location = _weather_location_query(prompt)
+    weather = fetch_current_weather(location)
     if not weather:
         return None
     content = (
@@ -1912,16 +2221,24 @@ def _fetch_stock_quote(symbol):
     return None
 
 
-def _stock_evidence_item(prompt):
+def _stock_evidence_item(prompt, subject=None):
     """A real-time, single-source evidence item for a stock-price question -
     the same fix as _weather_evidence_item for the same underlying problem.
     See _fetch_stock_quote's docstring for the live evidence that generic
     web search cannot answer this reliably. Returns None if this isn't a
     recognized stock query or the live lookup fails, so the caller falls
-    back to ordinary research unchanged."""
-    if not _looks_like_stock_query(prompt):
-        return None
-    subject, is_ticker = _stock_query_subject(prompt)
+    back to ordinary research unchanged.
+
+    `subject`, when given, skips regex detection/extraction entirely and
+    resolves that company/ticker directly - see _weather_evidence_item's
+    `location` parameter for why (same fix, same reason, live.stock_quote
+    instead of live.weather).
+    """
+    is_ticker = False
+    if subject is None:
+        if not _looks_like_stock_query(prompt):
+            return None
+        subject, is_ticker = _stock_query_subject(prompt)
     if not subject:
         print(f"{Fore.YELLOW}ℹ️ '{prompt}' looked like a stock query but no company name/ticker could be "
               f"extracted from it. Falling back to generic search.{Style.RESET_ALL}")
@@ -1958,31 +2275,965 @@ def _stock_evidence_item(prompt):
     }
 
 
+SOCCER_QUERY_KEYWORDS = (
+    "final score", "match score", "game score", "score of", "result of",
+    "premier league score", "champions league score", "europa league score",
+    "premier league result",
+)
+_SOCCER_TRAILING_KEYWORDS = ("score", "result", "fixture", "fixtures")
+_SOCCER_WIN_LOSE_PATTERN = re.compile(r"\bdid\s+(.+?)\s+(?:win|lose|draw|beat)\b", re.IGNORECASE)
+_SOCCER_HOW_DID_PATTERN = re.compile(r"\bhow\s+did\s+(.+?)\s+(?:do|get on|get along|play|go)\b", re.IGNORECASE)
+# Separate from _SOCCER_HOW_DID_PATTERN because "how was/is X's last match"
+# doesn't have a "do/play/go" verb to anchor on - a real, reported miss:
+# "how was man utd last match?" matched nothing, fell through with zero
+# evidence at all, and got answered with a fully invented score and date.
+#
+# The leading "(?:the\s+)?(?:last\s+|next\s+|recent\s+)?" (before the
+# capture group, in addition to the one after it) matters: English puts
+# that modifier BEFORE the subject in "how was the last man united match"
+# just as often as after it in "how was man united's last match". Without
+# it, the lazy capture group swallowed "the last" as if it were part of
+# the team name ("the last man united"), team resolution then found
+# nothing for that garbled name, and the query fell through to zero
+# evidence again - a second real, reported miss on the very fix meant to
+# prevent this class of bug.
+_SOCCER_HOW_WAS_PATTERN = re.compile(
+    r"\bhow\s+(?:was|is|did)\s+(?:the\s+)?(?:last\s+|next\s+|recent\s+)?(.+?)(?:'s)?\s+"
+    r"(?:last\s+|next\s+|recent\s+)?(?:match|game|fixture)\b",
+    re.IGNORECASE,
+)
+_SOCCER_WHAT_HAPPENED_PATTERN = re.compile(
+    r"\bwhat\s+happened\s+(?:in|to|with)\s+(?:the\s+)?(?:last\s+|recent\s+)?(.+?)(?:'s)?\s+"
+    r"(?:last\s+|recent\s+)?(?:match|game|fixture)\b",
+    re.IGNORECASE,
+)
+# "what was the last fixture for X?" (subject after "for/of") and "what was
+# X's last fixture?" (subject before, possessive) - a real, reported miss:
+# neither _SOCCER_HOW_WAS_PATTERN ("how was") nor _SOCCER_WHAT_HAPPENED_PATTERN
+# ("what happened") covers "what was ... fixture", and the query fell
+# through with zero evidence, producing a fully invented opponent, score,
+# and even starting lineup.
+_SOCCER_WHAT_FIXTURE_FOR_PATTERN = re.compile(
+    r"\bwhat\s+(?:was|is|were|are)\s+(?:the\s+)?(?:last\s+|next\s+|recent\s+)?(?:fixture|match|game)s?\s+"
+    r"(?:for|of)\s+(.+)",
+    re.IGNORECASE,
+)
+# Same leading-modifier fix as _SOCCER_HOW_WAS_PATTERN above, for the same reason.
+_SOCCER_WHAT_FIXTURE_POSSESSIVE_PATTERN = re.compile(
+    r"\bwhat\s+(?:was|is|were|are)\s+(?:the\s+)?(?:last\s+|next\s+|recent\s+)?(.+?)(?:'s)?\s+"
+    r"(?:last\s+|next\s+|recent\s+)?(?:fixture|match|game)\b",
+    re.IGNORECASE,
+)
+# Covers both "when is/are/do/does X play/match" (future - next match) and
+# "when was/were X's last match" (past - last match): a real, reported miss
+# on "when was the last Manchester United Match?" - only present/future
+# tense verbs were accepted, so a past-tense "when was" question matched
+# nothing and fell through with zero evidence. Named _WHEN_ rather than
+# _NEXT_MATCH_ now that it covers both tenses. Same leading-modifier fix as
+# _SOCCER_HOW_WAS_PATTERN above and for the same reason ("the last
+# Manchester United match" puts "last" before the subject).
+_SOCCER_WHEN_SEARCH_PATTERN = re.compile(
+    r"\bwhen\s+(?:do|does|is|are|was|were)\s+(?:the\s+)?(?:last\s+|next\s+|recent\s+)?.+?\s+"
+    r"(?:last\s+|next\s+|recent\s+)?(?:play(?:ing)?|match|game|fixture)s?\b",
+    re.IGNORECASE,
+)
+_SOCCER_WHEN_CAPTURE_PATTERN = re.compile(
+    r"\bwhen\s+(?:do|does|is|are|was|were)\s+(?:the\s+)?(?:last\s+|next\s+|recent\s+)?(.+?)(?:'s)?\s+"
+    r"(?:last\s+|next\s+|recent\s+)?(?:play(?:ing)?|match|game|fixture)s?\b",
+    re.IGNORECASE,
+)
+# "who does/do/is/are X play(ing) next" - a real, live-observed miss: this
+# phrasing (asking for the OPPONENT rather than a time) matched none of the
+# "when ..." patterns above, so the query fell through to the model-driven
+# selector with no free bypass, and the model both mis-parsed and then
+# wrongly refused it as "outside scope" - fully hallucinating a fixture.
+# Same leading-modifier fix as _SOCCER_HOW_WAS_PATTERN above and for the
+# same reason.
+_SOCCER_WHO_PLAY_PATTERN = re.compile(
+    r"\bwho\s+(?:do|does|is|are)\s+(?:the\s+)?(?:last\s+|next\s+|recent\s+)?(.+?)(?:'s)?\s+"
+    r"(?:last\s+|next\s+|recent\s+)?play(?:ing)?\b",
+    re.IGNORECASE,
+)
+_SOCCER_SCORE_OF_PATTERN = re.compile(r"\b(?:score|result)\s+(?:of|for)\s+(?:the\s+)?(.+)", re.IGNORECASE)
+_SOCCER_QUERY_TRAILING_FILLER = re.compile(
+    r"(?:\s*(?:final score|match score|game score|next match|next game|last match|last game|"
+    r"score|result|game|match|fixture|next|today|tonight|this week|right now))+"
+    r"[?.!,]*$",
+    re.IGNORECASE,
+)
+# UEFA club competitions checked alongside a team's own domestic league so a
+# fixture in continental competition (Champions League, Europa League) is
+# found even though the query resolved the team through its domestic league.
+_SOCCER_UEFA_LEAGUE_SLUGS = ("uefa.champions", "uefa.europa")
+
+# A table/standings question ("where do they stand in the league?",
+# "premier league table") is a different information need from every
+# pattern above - none of them are meant to match it, and none do today.
+# Deliberately its own detector rather than folded into
+# _looks_like_soccer_query: _fetch_soccer_team_matches only ever pulls a
+# team's own schedule (last/next/live fixture) from ESPN, never table
+# position, points, or record, so a standings question can never be
+# answered by that data no matter how well the team name resolves. See
+# _soccer_standings_evidence_item for what this is actually used for -
+# stating that gap explicitly instead of leaving the question ungrounded.
+_SOCCER_STANDINGS_KEYWORDS = ("standings", "league table", "table position", "league position")
+_SOCCER_STAND_PATTERN = re.compile(
+    r"\bstand(?:s|ing)?\s+in\s+the\s+(?:table|standings|\S+\s+league|league)\b", re.IGNORECASE,
+)
+
+
+def _looks_like_soccer_standings_query(prompt):
+    lowered = prompt.lower()
+    return any(keyword in lowered for keyword in _SOCCER_STANDINGS_KEYWORDS) or bool(_SOCCER_STAND_PATTERN.search(prompt))
+
+
+def _looks_like_soccer_query(prompt):
+    lowered = prompt.lower()
+    return (
+        any(keyword in lowered for keyword in SOCCER_QUERY_KEYWORDS)
+        or any(lowered.rstrip("?.! ").endswith(keyword) for keyword in _SOCCER_TRAILING_KEYWORDS)
+        or bool(_SOCCER_WIN_LOSE_PATTERN.search(prompt))
+        or bool(_SOCCER_HOW_DID_PATTERN.search(prompt))
+        or bool(_SOCCER_HOW_WAS_PATTERN.search(prompt))
+        or bool(_SOCCER_WHAT_HAPPENED_PATTERN.search(prompt))
+        or bool(_SOCCER_WHAT_FIXTURE_FOR_PATTERN.search(prompt))
+        or bool(_SOCCER_WHAT_FIXTURE_POSSESSIVE_PATTERN.search(prompt))
+        or bool(_SOCCER_WHEN_SEARCH_PATTERN.search(prompt))
+        or bool(_SOCCER_WHO_PLAY_PATTERN.search(prompt))
+    )
+
+
+def _clean_soccer_subject(text):
+    text = text.strip(" ?.!'")
+    text = _SOCCER_QUERY_TRAILING_FILLER.sub("", text).strip(" ?.!,'")
+    text = re.sub(r"'s$", "", text).strip()
+    return text
+
+
+def _soccer_query_subject(prompt):
+    """Best-effort team name for a soccer-result question. Tries each
+    sentence-shape pattern ("did X win", "how did X do", "when do X play",
+    "score of X") in turn, then falls back to trailing-filler stripping on
+    the whole prompt for the bare "X score"/"X result" shape - the same
+    two-direction problem _stock_query_subject solves for "stock price of
+    X" vs "X stock price", solved the same way here.
+    """
+    # Ordered most-specific-first: _SOCCER_WHAT_FIXTURE_POSSESSIVE_PATTERN is
+    # deliberately last - it's the most permissive shape ("what was ... X
+    # game/match/fixture") and would otherwise intercept sentences the more
+    # specific patterns above it should handle first (a real regression
+    # caught by testing this before shipping it: it grabbed "the score of
+    # the Man United" whole instead of letting _SOCCER_SCORE_OF_PATTERN
+    # handle "what was the score of the Man United game?").
+    for pattern in (
+        _SOCCER_WIN_LOSE_PATTERN, _SOCCER_HOW_DID_PATTERN, _SOCCER_HOW_WAS_PATTERN,
+        _SOCCER_WHAT_HAPPENED_PATTERN, _SOCCER_WHAT_FIXTURE_FOR_PATTERN,
+        _SOCCER_WHEN_CAPTURE_PATTERN, _SOCCER_WHO_PLAY_PATTERN, _SOCCER_SCORE_OF_PATTERN,
+        _SOCCER_WHAT_FIXTURE_POSSESSIVE_PATTERN,
+    ):
+        match = pattern.search(prompt)
+        if match:
+            return _clean_soccer_subject(match.group(1))
+    return _clean_soccer_subject(prompt)
+
+
+def _resolve_soccer_team(team_name):
+    """Look up an ESPN soccer team by name via ESPN's keyless site-search
+    endpoint. Returns (team_id, display_name, league_slug) or None. The
+    same shape as _resolve_stock_symbol: a free search endpoint stands in
+    for a proper name->id lookup, filtered to soccer team results only.
+    """
+    try:
+        resp = requests.get(
+            "https://site.api.espn.com/apis/search/v2",
+            params={"query": team_name, "limit": 10}, timeout=8,
+        )
+        resp.raise_for_status()
+        for group in resp.json().get("results", []):
+            if group.get("type") != "team":
+                continue
+            for item in group.get("contents", []):
+                if item.get("sport") != "soccer" or item.get("type") != "team":
+                    continue
+                match = re.search(r"t:(\d+)", item.get("uid", ""))
+                league_slug = item.get("defaultLeagueSlug")
+                if match and league_slug:
+                    return match.group(1), item.get("displayName", team_name), league_slug
+        return None
+    except (requests.RequestException, ValueError, KeyError):
+        return None
+
+
+def _soccer_score_display(competitor, state):
+    """A competitor's score, or None for a not-yet-played ('pre') fixture -
+    ESPN represents an unplayed match's score inconsistently (a real 0 or a
+    scoreless dict, both meaningless before kickoff), so this only trusts a
+    score once the match has actually started or finished."""
+    if state not in {"in", "post"}:
+        return None
+    score = competitor.get("score")
+    return score.get("displayValue") if isinstance(score, dict) else score
+
+
+def _parse_soccer_event(event, default_competition):
+    """One ESPN event dict (from either the schedule endpoint's `events`
+    list or the team-summary endpoint's `nextEvent` list - same shape) into
+    (state, match) - state is ESPN's "pre"/"in"/"post", match is the dict
+    _fetch_soccer_team_matches assembles into evidence text. (None, None)
+    if the event is missing a field this code depends on."""
+    try:
+        competition = event["competitions"][0]
+        state = competition["status"]["type"]["state"]
+        competitors = competition["competitors"]
+        home = next(c for c in competitors if c.get("homeAway") == "home")
+        away = next(c for c in competitors if c.get("homeAway") == "away")
+        match = {
+            "date": event.get("date"),
+            "competition": event.get("league", {}).get("name", default_competition),
+            "status_description": competition["status"]["type"].get("description", ""),
+            "home_name": home["team"]["displayName"],
+            "away_name": away["team"]["displayName"],
+            "home_score": _soccer_score_display(home, state),
+            "away_score": _soccer_score_display(away, state),
+        }
+        return state, match
+    except (KeyError, IndexError, StopIteration, TypeError):
+        return None, None
+
+
+def _fetch_next_scheduled_match(team_id, league_slugs):
+    """The team's next fixture from ESPN's team-summary endpoint's
+    `nextEvent` field - a second, separate ESPN endpoint from the schedule
+    one _fetch_soccer_team_matches otherwise relies on.
+
+    A real, reported bug, confirmed live: the schedule endpoint
+    (.../teams/{id}/schedule) returned exactly one event for Manchester
+    United - the most recent PAST match - and zero future fixtures, even
+    though a real next fixture existed and was already on the calendar
+    (visible immediately via this second endpoint's `nextEvent`). The
+    grounding pipeline was correctly telling the model "no next match
+    found" - genuinely correct given the data _fetch_soccer_team_matches
+    was looking at - but that data was incomplete, not the model
+    fabricating over real evidence like the earlier UNKNOWN-instruction
+    truncation bug. This fills that specific gap from a second real ESPN
+    source rather than guessing.
+    """
+    for slug in league_slugs:
+        try:
+            resp = requests.get(
+                f"https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/teams/{team_id}",
+                timeout=8,
+            )
+            resp.raise_for_status()
+            next_events = resp.json().get("team", {}).get("nextEvent") or []
+        except (requests.RequestException, ValueError, KeyError):
+            continue
+        for event in next_events:
+            state, match = _parse_soccer_event(event, slug)
+            if state == "pre":
+                return match
+    return None
+
+
+def _fetch_soccer_team_matches(team_id, home_league_slug):
+    """A team's most recent result and next fixture from ESPN's keyless
+    schedule endpoint - built for the same reason _fetch_stock_quote
+    bypasses generic search: a live score page renders client-side with
+    JS, so a plain scrape of it has no score in it at all. Checks the
+    team's home league plus the UEFA club competitions so a Champions
+    League/Europa League fixture is found even though the team was
+    resolved through its domestic league.
+
+    Returns {"last_match": ..., "next_match": ..., "live_match": ...}
+    (each a dict or None), or None if every league's schedule call failed.
+    """
+    league_slugs = [home_league_slug] + [s for s in _SOCCER_UEFA_LEAGUE_SLUGS if s != home_league_slug]
+    events, any_success = [], False
+    for slug in league_slugs:
+        try:
+            resp = requests.get(
+                f"https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/teams/{team_id}/schedule",
+                timeout=8,
+            )
+            resp.raise_for_status()
+            events.extend(resp.json().get("events", []))
+            any_success = True
+        except (requests.RequestException, ValueError, KeyError):
+            continue
+    if not any_success:
+        return None
+
+    last_match, next_match, live_match = None, None, None
+    for event in sorted(events, key=lambda e: e.get("date", "")):
+        state, match = _parse_soccer_event(event, home_league_slug)
+        if state is None:
+            continue
+        if state == "post":
+            last_match = match  # events are date-sorted, so the last one seen is the most recent
+        elif state == "in":
+            live_match = match
+        elif state == "pre" and next_match is None:
+            next_match = match
+    if next_match is None:
+        next_match = _fetch_next_scheduled_match(team_id, league_slugs)
+    return {"last_match": last_match, "next_match": next_match, "live_match": live_match}
+
+
+def _soccer_outcome_sentence(home_name, away_name, home_score, away_score):
+    """An explicit winner/loser/draw sentence, alongside the raw "home
+    NN-NN away" line - a real, live-observed bug: given a scoreline like
+    "Hull City 2-0 Manchester United", the small answering model
+    misattributed the result and told the user Manchester United had WON
+    2-0 - inverting both the winner and the home/away scores. A bare
+    scoreline leaves that inference to the model; stating the outcome in
+    words removes it. Returns None if the scores aren't parseable as
+    integers."""
+    try:
+        home_n, away_n = int(home_score), int(away_score)
+    except (TypeError, ValueError):
+        return None
+    if home_n > away_n:
+        return f"{home_name} won {home_n}-{away_n} against {away_name}."
+    if away_n > home_n:
+        return f"{away_name} won {away_n}-{home_n} against {home_name}."
+    return f"{home_name} and {away_name} drew {home_n}-{away_n}."
+
+
+def _unresolved_soccer_subject_evidence(prompt, reason):
+    """An explicit, stated evidence item for a message that looks like a
+    live soccer/match question (_looks_like_soccer_query matched) but names
+    no team this code can resolve to real data. `reason` is a short,
+    specific description of what failed (no team text found at all, vs. a
+    team name that didn't resolve against ESPN) - logged in `content` so
+    it's visible in the model's own context, not just to a developer
+    reading the code.
+
+    Returned instead of None so the caller (_soccer_evidence_item) treats
+    this the same as a successful lookup: it stops the live-lookup bypass
+    chain right here with real evidence, rather than falling through to a
+    generic web search with no team-specific grounding at all. See the
+    call site above for the real, reported failure this fixes."""
+    content = (
+        f"No live match data was retrieved ({reason}). Do not guess, assume, or invent any team, opponent, "
+        "score, date, or league standing to answer this question. State plainly that you don't have this "
+        "information and ask the user to name the team."
+    )
+    return {
+        "id": hashlib.sha256(f"soccer-unresolved|{prompt}|{reason}".encode("utf-8")).hexdigest()[:16],
+        "query": prompt,
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "title": "No team identified for this question",
+        "url": "",
+        "search_provider": "soccer-unresolved",
+        "content": content,
+        "truthfulness_confidence": 90,
+        "recency_confidence": 100,
+        "corroborating_domains": [],
+    }
+
+
+# Abbreviation -> IANA zone, for the handful of US zone names a person is
+# likely to type into user_details.log's free-text `timezone` field. "mst"
+# maps to America/Phoenix (Arizona's non-DST MST) rather than the Mountain
+# zone's seasonal America/Denver - see _user_timezone's docstring for why
+# that's the right call for THIS specific, single-user deployment.
+_TIMEZONE_ABBREVIATIONS = {
+    "utc": "UTC", "gmt": "UTC",
+    "est": "America/New_York", "edt": "America/New_York",
+    "cst": "America/Chicago", "cdt": "America/Chicago",
+    "mst": "America/Phoenix",
+    "mdt": "America/Denver",
+    "pst": "America/Los_Angeles", "pdt": "America/Los_Angeles",
+}
+
+
+def _user_timezone():
+    """The user's configured local timezone (user_details.log's free-text
+    `timezone` field, via load_user_profile), resolved to a pytz zone - or
+    None if the field is empty or doesn't match a recognized abbreviation
+    or IANA name.
+
+    Deliberately no guessing beyond an exact, listed match: an
+    unrecognized value returns None so callers state a time in UTC
+    explicitly instead of silently mislabeling it with a wrong zone - the
+    same "state the gap, don't fabricate" reasoning as
+    _unresolved_soccer_subject_evidence above.
+
+    Gnosis is built for one person, not a multi-tenant service (this
+    user's own framing: "multi agent, single user") - load_user_profile()
+    reads a single shared profile file, not a per-request user id, so this
+    helper is correct as-is; it would need real per-user zone storage
+    instead of one shared profile file if that ever changed.
+    """
+    raw = (load_user_profile().get("timezone") or "").strip()
+    if not raw:
+        return None
+    token = raw.split("(")[0].strip().lower()
+    zone_name = _TIMEZONE_ABBREVIATIONS.get(token)
+    if zone_name:
+        return pytz.timezone(zone_name)
+    try:
+        return pytz.timezone(raw)
+    except pytz.UnknownTimeZoneError:
+        return None
+
+
+def _format_match_datetime(iso_date):
+    """Format an ESPN match `date` (UTC ISO8601) for display, converted to
+    the user's configured local timezone when known (_user_timezone()) and
+    always explicitly labeled with the zone it's in - UTC when no local
+    zone is configured, never a bare, ambiguous timestamp. Converting here,
+    once, deterministically, is the point: a small local model asked to do
+    timezone math itself is exactly the kind of thing that gets silently
+    guessed at instead of computed - see this module's other "state it
+    explicitly, don't leave it for the model to fill in" fixes for the same
+    reasoning applied elsewhere in soccer evidence."""
+    if not iso_date:
+        return iso_date
+    try:
+        when = datetime.fromisoformat(iso_date.replace("Z", "+00:00"))
+    except ValueError:
+        return iso_date
+    zone = _user_timezone()
+    if zone is None:
+        return when.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    return when.astimezone(zone).strftime("%Y-%m-%d %H:%M %Z")
+
+
+def _soccer_evidence_item(prompt, team_name=None, resolved_team=None):
+    """A real-time, single-source evidence item for a soccer-result
+    question - the same fix as _weather_evidence_item/_stock_evidence_item
+    for the same underlying problem. See _fetch_soccer_team_matches'
+    docstring for the live evidence generic web search cannot answer this
+    reliably. Returns None if this isn't a recognized soccer query or the
+    live lookup fails, so the caller falls back to ordinary research
+    unchanged.
+
+    `team_name`, when given, skips regex detection/extraction entirely and
+    resolves that team directly - see _weather_evidence_item's `location`
+    parameter for why (same fix, same reason, live.soccer_result instead
+    of live.weather).
+
+    `resolved_team`, when given, is an already-resolved `(team_id,
+    display_name, league_slug)` - the exact shape _resolve_soccer_team
+    returns - and skips that ESPN name-search call entirely, going straight
+    to the schedule fetch. For a subscribed team (core/subscriptions.py),
+    the id/league were already resolved once at subscribe time; re-running
+    a live name search on every single message would be both slower and a
+    second chance for that search to fail or match the wrong team.
+    """
+    if resolved_team is not None:
+        team_id, display_name, league_slug = resolved_team
+    else:
+        subject = team_name
+        if subject is None:
+            if not _looks_like_soccer_query(prompt):
+                return None
+            subject = _soccer_query_subject(prompt)
+        if not subject:
+            # This message is soccer-shaped (_looks_like_soccer_query said
+            # so) but no team name could be extracted from it at all - a
+            # real, reported failure: the old code returned None here,
+            # silently, and the caller treated that identically to "not a
+            # soccer question," falling through to a generic web search
+            # with no team-specific evidence. The model then filled the gap
+            # itself, fabricating a fixture wholesale rather than saying it
+            # didn't know which team was being asked about. State the gap
+            # instead of hiding it - same fix, same reasoning, as the
+            # explicit "Next match: UNKNOWN" text below for a resolved team
+            # with no scheduled fixture.
+            return _unresolved_soccer_subject_evidence(prompt, reason="no team name found in this message")
+        resolved = _resolve_soccer_team(subject)
+        if not resolved:
+            return _unresolved_soccer_subject_evidence(
+                prompt, reason=f'"{subject}" did not match any team in ESPN\'s data',
+            )
+        team_id, display_name, league_slug = resolved
+    matches = _fetch_soccer_team_matches(team_id, league_slug)
+    if not matches or not any(matches.values()):
+        return None
+
+    parts = [f"{display_name}."]
+
+    def _describe(label, match, include_score):
+        home_score, away_score = match["home_score"], match["away_score"]
+        piece = f"{label}: {match['home_name']}"
+        has_score = include_score and home_score is not None and away_score is not None
+        if has_score:
+            piece += f" {home_score}-{away_score}"
+        piece += (
+            f" {match['away_name']} ({match['competition']}, {match['status_description']}) "
+            f"on {_format_match_datetime(match['date'])}."
+        )
+        parts.append(piece)
+        if has_score:
+            outcome = _soccer_outcome_sentence(match["home_name"], match["away_name"], home_score, away_score)
+            if outcome:
+                parts.append(outcome)
+
+    if matches["live_match"]:
+        _describe("Live now", matches["live_match"], include_score=True)
+    if matches["last_match"]:
+        _describe("Last result", matches["last_match"], include_score=True)
+    else:
+        parts.append("Last result: no recent match found in the available data.")
+    if matches["next_match"]:
+        _describe("Next match", matches["next_match"], include_score=False)
+    else:
+        # A real, reported bug: when this was silently omitted instead of
+        # stated, the model - asked "who do they play next?" with only a
+        # "Last result" line to work from - relabeled that past match as
+        # the upcoming one instead of saying it didn't know. A short,
+        # explicit "no data" line wasn't enough on its own either - tested
+        # live and the model still restated the last match as the next one
+        # despite it. This more forceful, repetitive version (spelling out
+        # that the last result is a PAST match, not the next one, and that
+        # saying "unknown" is the required answer) is what actually landed,
+        # confirmed live before shipping it - the same "needed a stronger
+        # prompt to actually land" lesson [Unverified title] and [Wrong
+        # entity] already required in fact_check_answer.
+        parts.append(
+            "Next match: UNKNOWN - no upcoming fixture is scheduled in the available data. If asked what "
+            "team plays next or when the next match is, you must say this information is not currently "
+            "available. The 'Last result' above is a PAST match that has already happened - it is NOT the "
+            "next match, even though it is the only match listed."
+        )
+
+    content = " ".join(parts)
+    return {
+        "id": hashlib.sha256(f"espn-soccer|{team_id}|{content}".encode("utf-8")).hexdigest()[:16],
+        "query": prompt,
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "title": f"Live soccer results - {display_name}",
+        "url": f"https://www.espn.com/soccer/team/_/id/{team_id}",
+        "search_provider": "espn",
+        "content": content,
+        "truthfulness_confidence": 90,
+        "recency_confidence": 100,
+        "corroborating_domains": [],
+    }
+
+
+def _live_weather_lookup(location):
+    """Tool-facing wrapper for live.weather - see _weather_evidence_item's
+    `location` parameter docstring for why this bypasses regex entirely."""
+    return _weather_evidence_item(location, location=location)
+
+
+def _live_stock_lookup(company_or_ticker):
+    """Tool-facing wrapper for live.stock_quote - see _stock_evidence_item's
+    `subject` parameter docstring for why this bypasses regex entirely."""
+    return _stock_evidence_item(company_or_ticker, subject=company_or_ticker)
+
+
+def _live_soccer_lookup(team):
+    """Tool-facing wrapper for live.soccer_result - see
+    _soccer_evidence_item's `team_name` parameter docstring for why this
+    bypasses regex entirely."""
+    return _soccer_evidence_item(team, team_name=team)
+
+
+def _soccer_standings_evidence_item(prompt):
+    """An explicit 'not available' evidence item for a league standings/
+    table question. Gnosis has no live standings data source at all -
+    _fetch_soccer_team_matches only pulls a team's own schedule, never
+    table position, points, or record - so this can't be answered by
+    resolving a team better or searching harder; the capability itself
+    doesn't exist yet. Returns None if prompt isn't standings-shaped.
+
+    A real, reported failure: "where do they stand in the premier league?"
+    matched none of the soccer-query detectors, reached the model with
+    zero evidence, and got answered with a fully invented league position,
+    point total, and goal record. State the gap explicitly - same fix,
+    same reasoning as _unresolved_soccer_subject_evidence - instead of
+    pretending to have data this code doesn't fetch."""
+    if not _looks_like_soccer_standings_query(prompt):
+        return None
+    return {
+        "id": hashlib.sha256(f"soccer-standings-unavailable|{prompt}".encode("utf-8")).hexdigest()[:16],
+        "query": prompt,
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "title": "League standings not available",
+        "url": "",
+        "search_provider": "soccer-standings-unavailable",
+        "content": (
+            "Gnosis has no live league standings/table data (position, points, goal record) for any team. "
+            "Do not guess, estimate, or invent a league position, point total, or record. State plainly that "
+            "this information isn't available."
+        ),
+        "truthfulness_confidence": 90,
+        "recency_confidence": 100,
+        "corroborating_domains": [],
+    }
+
+
+def _try_live_lookup_bypasses(query_text):
+    """Try each live-lookup bypass in turn against query_text, printing/
+    emitting status and returning the first evidence item found, or None if
+    none matched. Shared by model_directed_web_research's direct attempt
+    against the raw prompt and its retry against a resolved follow-up."""
+    weather_item = _weather_evidence_item(query_text)
+    if weather_item:
+        print(f"{Fore.CYAN}🌤️  Live weather lookup for: {query_text}{Style.RESET_ALL}")
+        _emit_status("Checking live weather...")
+        return weather_item
+    stock_item = _stock_evidence_item(query_text)
+    if stock_item:
+        print(f"{Fore.CYAN}📈 Live stock quote lookup for: {query_text}{Style.RESET_ALL}")
+        _emit_status("Checking live stock quote...")
+        return stock_item
+    soccer_item = _soccer_evidence_item(query_text)
+    if soccer_item:
+        print(f"{Fore.CYAN}⚽ Live soccer result lookup for: {query_text}{Style.RESET_ALL}")
+        _emit_status("Checking live match result...")
+        return soccer_item
+    standings_item = _soccer_standings_evidence_item(query_text)
+    if standings_item:
+        print(f"{Fore.CYAN}⚽ Soccer standings query (no data source) for: {query_text}{Style.RESET_ALL}")
+        _emit_status("Checking league standings...")
+        return standings_item
+    return None
+
+
+def _matching_subscription(prompt):
+    """The first subscription (core/subscriptions.py) whose name or any
+    keyword appears in prompt, or None. First-match-wins, no ranking - fine
+    for a handful of subscriptions; would need real ranking if that ever
+    stops being true."""
+    lowered = prompt.lower()
+    for subscription in subscriptions.list_subscriptions():
+        candidates = [subscription.get("name", "")] + subscription.get("metadata", {}).get("keywords", [])
+        if any(candidate and candidate.lower() in lowered for candidate in candidates):
+            return subscription
+    return None
+
+
+def _subscribed_team_lookup(subscription, prompt):
+    metadata = subscription.get("metadata", {})
+    team_id, league_slug = metadata.get("team_id"), metadata.get("league_slug")
+    if not team_id or not league_slug:
+        return []
+    item = _soccer_evidence_item(
+        subscription["name"], resolved_team=(team_id, subscription["name"], league_slug),
+    )
+    return [item] if item else []
+
+
+def _subscribed_topic_lookup(subscription, prompt):
+    try:
+        results = tool_registry.execute("web.search", query=f"{subscription['name']} {prompt}")
+    except Exception:
+        return []
+    return save_web_evidence(prompt, results or [])
+
+
+def _subscribed_website_lookup(subscription, prompt):
+    url = subscription.get("metadata", {}).get("url")
+    if not url:
+        return []
+    text = fetch_page_content(url)
+    if not text:
+        return []
+    return [{
+        "id": hashlib.sha256(f"subscribed-website|{url}|{text[:200]}".encode("utf-8")).hexdigest()[:16],
+        "query": prompt,
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "title": subscription["name"],
+        "url": url,
+        "search_provider": "subscribed-website",
+        "content": text[:1500],
+        "truthfulness_confidence": 85,
+        "recency_confidence": 80,
+        "corroborating_domains": [],
+    }]
+
+
+def _subscribed_weather_lookup(subscription, prompt):
+    location = subscription.get("metadata", {}).get("location")
+    if not location:
+        return []
+    item = _weather_evidence_item(prompt, location=location)
+    return [item] if item else []
+
+
+_SUBSCRIPTION_HANDLERS = {
+    "team": _subscribed_team_lookup,
+    "topic": _subscribed_topic_lookup,
+    "website": _subscribed_website_lookup,
+    "weather": _subscribed_weather_lookup,
+}
+
+
+def _subscription_bypass(prompt):
+    """Evidence for prompt from a user-declared subscription, or [] if none
+    matches - see core/subscriptions.py's module docstring for why this
+    exists: skip inferring the subject from raw prompt text entirely for
+    anything the user already told Gnosis they follow."""
+    subscription = _matching_subscription(prompt)
+    if not subscription:
+        return []
+    handler = _SUBSCRIPTION_HANDLERS.get(subscription["type"])
+    if not handler:
+        return []
+    evidence = handler(subscription, prompt)
+    if evidence:
+        print(f"{Fore.CYAN}🔔 Subscribed {subscription['type']} lookup: {subscription['name']}{Style.RESET_ALL}")
+        _emit_status(f"Checking your {subscription['type']} subscription: {subscription['name']}...")
+    return evidence
+
+
+def add_team_subscription(name):
+    """GUI-facing: resolve name against ESPN once, then persist the
+    resolved (team_id, league_slug) - see _soccer_evidence_item's
+    `resolved_team` docstring for why that avoids a repeated live name
+    search on every message about this team. Raises ValueError (with a
+    message fit to show the user directly) if the team can't be resolved."""
+    resolved = _resolve_soccer_team(name)
+    if not resolved:
+        raise ValueError(f"Could not find a soccer team named \"{name}\".")
+    team_id, display_name, league_slug = resolved
+    return subscriptions.add_subscription(
+        "team", display_name,
+        metadata={"team_id": team_id, "league_slug": league_slug, "sport": "soccer"},
+    )
+
+
+def add_topic_subscription(name, keywords=None):
+    """GUI-facing: no live resolution needed - a topic is just a name (and
+    optional alias keywords) matched against future prompts."""
+    return subscriptions.add_subscription("topic", name, metadata={"keywords": keywords or []})
+
+
+def add_website_subscription(name, url, keywords=None):
+    """GUI-facing: verify the URL is actually fetchable before saving it -
+    the same "we know it works" bar add_team_subscription holds a team
+    name to. Raises ValueError (with a message fit to show the user
+    directly) if the URL can't be fetched."""
+    if not fetch_page_content(url):
+        raise ValueError(f"Could not fetch {url} - check the URL and try again.")
+    return subscriptions.add_subscription("website", name, metadata={"url": url, "keywords": keywords or []})
+
+
+def add_weather_subscription(location):
+    """GUI-facing: resolve location against Open-Meteo's geocoder once, and
+    persist the NORMALIZED place name it returns (e.g. "tucson" ->
+    "Tucson, Arizona, United States"), not the user's raw text - so every
+    future _subscribed_weather_lookup call geocodes the same unambiguous
+    string instead of re-resolving arbitrary user phrasing each time.
+    Raises ValueError (with a message fit to show the user directly) if
+    nothing geocodes."""
+    weather = fetch_current_weather(location)
+    if not weather:
+        raise ValueError(f"Could not find a location matching \"{location}\".")
+    return subscriptions.add_subscription("weather", weather["place"], metadata={"location": weather["place"]})
+
+
+_RESEARCH_TOOL_NAMES = ("knowledge.search", "web.search", "live.weather", "live.stock_quote", "live.soccer_result")
+
+
+def _research_tool_catalog():
+    catalog_by_name = {tool.name: tool for tool in tool_registry.list() if tool.name in _RESEARCH_TOOL_NAMES}
+    return [catalog_by_name[name] for name in _RESEARCH_TOOL_NAMES if name in catalog_by_name]
+
+
+def _select_tool_actions(prompt):
+    """Ask the model which of the research tools (the knowledge base, web
+    search, and the live weather/stock/soccer lookups) would help answer
+    this message - and, unlike _select_tool_action, explicitly invites
+    selecting SEVERAL at once (e.g. knowledge.search to check prior
+    research AND web.search for anything not already known, or a live.*
+    tool for extra corroboration alongside web.search) rather than jumping
+    at the first one that matches, since all of these are free and
+    combining sources gives a fuller, better-corroborated answer.
+
+    Replaces regex-based intent detection as the PRIMARY mechanism for this
+    class of question - _try_live_lookup_bypasses (the old regex path) is
+    still tried first as a free, zero-latency fast path, but this is what
+    runs when it finds nothing. Natural language has far more phrasings
+    than any hand-written pattern set can keep up with: four separate real,
+    reported regex bugs were found and fixed in this exact area (missing
+    "X stock price" word order, "the last fixture for X" phrasing, "the
+    last man united match" modifier-before-subject order, "when was" past
+    tense) before this replaced regex as the primary path. Recent
+    conversation history is included so a follow-up naming no subject of
+    its own ("what was the last fixture?") can still be resolved from
+    context, the same way a person reading the conversation would.
+
+    Returns a list of {"tool": name, "arguments": {...}} (possibly empty).
+    Never raises - any missing/unparseable/invalid response yields [].
+    """
+    if ollama is None:
+        return []
+    catalog = _research_tool_catalog()
+    if not catalog:
+        return []
+    planner = (
+        "You have these research tools available. Decide which of them, if any, would help answer the "
+        "user's LATEST message - you may select MORE THAN ONE if combining sources would give a fuller or "
+        "better-corroborated answer (e.g. knowledge.search to check prior research AND web.search for "
+        "anything not already known, or a live.* tool alongside web.search for extra corroboration). Do "
+        "not pick any tool for a question that doesn't need current, external, or previously-researched "
+        "information (general knowledge, opinions, casual conversation, math).\n\n"
+        "Use the recent conversation to resolve a follow-up that doesn't name its own subject (e.g. "
+        "\"what was the last fixture?\" after a conversation about Manchester United means "
+        "team=\"Manchester United\"). If you cannot tell which specific subject (team, company, place) "
+        "the user means even after checking the conversation, do not guess one - select no tool for that "
+        "capability. An honest \"I don't know\" is a fine answer; a tool call built on a guessed argument "
+        "is not.\n\n"
+        f"Tools:\n{_tool_action_catalog_text(catalog)}\n\n"
+        "Return ONLY valid JSON: {\"tools\": [{\"tool\": \"<name>\", \"arguments\": {...}}, ...], "
+        "\"reason\": \"one short sentence on why (or why none apply)\"} - an empty tools list if none apply. "
+        "The reason is logged for later review, not shown to the user - always include a real one, even "
+        "for an empty list (e.g. \"casual conversation, no tool needed\" or \"no team named, even in the "
+        "recent conversation\").\n\n"
+        f"Recent conversation:\n{_planner_history()}\n\nLatest message: {prompt}"
+    )
+
+    def _chat_fn(messages):
+        response = model_chat(model=_selected_model(), messages=messages)
+        return response.get("message", {}).get("content", "")
+
+    decision = agent_dialogue.call_agent_json(_chat_fn, planner)
+    if not isinstance(decision, dict):
+        events.publish(TOOL_SELECTION_MADE, prompt=prompt, selected=[], reason="unparseable model response")
+        return []
+    reason = decision.get("reason") if isinstance(decision.get("reason"), str) else None
+    raw_tools = decision.get("tools")
+    if not isinstance(raw_tools, list):
+        events.publish(TOOL_SELECTION_MADE, prompt=prompt, selected=[], reason=reason or "no 'tools' list in response")
+        return []
+    valid_by_name = {tool.name: tool for tool in catalog}
+    selected, seen_names = [], set()
+    for entry in raw_tools:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("tool")
+        tool = valid_by_name.get(name)
+        if tool is None or name in seen_names:
+            continue
+        arguments = entry.get("arguments")
+        arguments = arguments if isinstance(arguments, dict) else {}
+        # Real, reported failure: the model supplied live.soccer_result with
+        # both "team" and a "location" left over from a live.weather call it
+        # made the turn before - tool_registry.execute raised a TypeError for
+        # the unexpected keyword (caught, so it failed safe, but wasted the
+        # turn and fell through to a worse fallback path). Dropping anything
+        # outside the tool's declared parameters is a hard, deterministic
+        # check code can do perfectly.
+        arguments = {key: value for key, value in arguments.items() if key in tool.parameters}
+        missing = [param for param in tool.parameters if param not in arguments]
+        if missing:
+            print(f"{Fore.YELLOW}ℹ️ Model selected '{name}' but didn't supply required argument(s) "
+                  f"{missing} - skipping it.{Style.RESET_ALL}")
+            continue
+        seen_names.add(name)
+        selected.append({"tool": name, "arguments": arguments})
+    events.publish(TOOL_SELECTION_MADE, prompt=prompt, selected=[a["tool"] for a in selected], reason=reason)
+    return selected
+
+
+def _knowledge_search_evidence(query, results):
+    """Normalize knowledge.search's (filename, content) tuples into the
+    same evidence-dict shape web search results use, so corroboration
+    scoring and fact-checking apply uniformly regardless of which tool
+    produced the grounding. High truthfulness (this is Gnosis's own past
+    research, not an arbitrary web page) but a lower freshness ceiling
+    (it's whatever age that saved research actually is, not verified live)."""
+    evidence = []
+    for filename, content in (results or [])[:5]:
+        evidence.append({
+            "id": hashlib.sha256(f"knowledge-base|{filename}|{query}".encode("utf-8")).hexdigest()[:16],
+            "query": query,
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+            "title": f"Knowledge base - {filename}",
+            "url": f"knowledge_base://{filename}",
+            "search_provider": "knowledge-base",
+            "content": content[:2000],
+            "truthfulness_confidence": 85,
+            "recency_confidence": 60,
+            "corroborating_domains": [],
+        })
+    return evidence
+
+
+def _execute_research_tool_action(action, query_for_record):
+    """Execute one _select_tool_actions selection and return a list of
+    evidence-dicts (0 or more - most tools yield one, web.search can yield
+    several), or [] on any failure. Each tool's raw result has a different
+    shape; normalized here to the shared evidence-dict shape so downstream
+    corroboration scoring and fact-checking don't need to know which
+    tool(s) actually produced the grounding.
+    """
+    name = action.get("tool")
+    arguments = action.get("arguments", {})
+    try:
+        result = tool_registry.execute(name, **arguments)
+    except Exception as error:
+        print(f"{Fore.YELLOW}ℹ️ Tool '{name}' selected by the model failed: {error}{Style.RESET_ALL}")
+        events.publish(TOOL_EXECUTION_COMPLETED, tool=name, arguments=arguments, success=False, error=str(error), evidence_count=0)
+        return []
+
+    evidence = []
+    if name == "live.weather" and result:
+        print(f"{Fore.CYAN}🌤️  Live weather lookup (model-selected): {arguments.get('location')}{Style.RESET_ALL}")
+        _emit_status("Checking live weather...")
+        evidence = [result]
+    elif name == "live.stock_quote" and result:
+        print(f"{Fore.CYAN}📈 Live stock quote lookup (model-selected): {arguments.get('company_or_ticker')}{Style.RESET_ALL}")
+        _emit_status("Checking live stock quote...")
+        evidence = [result]
+    elif name == "live.soccer_result" and result:
+        print(f"{Fore.CYAN}⚽ Live soccer result lookup (model-selected): {arguments.get('team')}{Style.RESET_ALL}")
+        _emit_status("Checking live match result...")
+        evidence = [result]
+    elif name == "web.search":
+        print(f"{Fore.CYAN}🔍 Web search (model-selected): {arguments.get('query')}{Style.RESET_ALL}")
+        _emit_status(f"Searching the web: {arguments.get('query')}")
+        results = [item for item in (result or []) if not is_fallback_result(item)][:5]
+        evidence = save_web_evidence(query_for_record, results)
+    elif name == "knowledge.search":
+        print(f"{Fore.CYAN}📚 Knowledge base search (model-selected): {arguments.get('topic')}{Style.RESET_ALL}")
+        _emit_status("Checking the knowledge base...")
+        evidence = _knowledge_search_evidence(query_for_record, result)
+
+    events.publish(
+        TOOL_EXECUTION_COMPLETED, tool=name, arguments=arguments,
+        success=bool(evidence), error=None, evidence_count=len(evidence),
+    )
+    return evidence
+
+
 def model_directed_web_research(prompt):
     """Collect evidence through successive, model-chosen searches and rank it.
 
     Deep Think additionally seeds a multi-angle plan up front and enforces a
     minimum search count, since breadth should not depend on a small local
     planner model choosing on its own to keep researching. Standard mode
-    short-circuits to a single live reading for a weather or stock-price
-    query instead - see _weather_evidence_item and _stock_evidence_item for
-    why generic search evidence is unreliable for these specific question
-    shapes, and Deep Think keeps its existing multi-source behavior since
-    forcing it down to one reading would defeat that mode's whole purpose.
+    short-circuits to a single live reading for a weather, stock-price, or
+    soccer-result query instead - see _weather_evidence_item,
+    _stock_evidence_item, and _soccer_evidence_item for why generic search
+    evidence is unreliable for these specific question shapes, and Deep
+    Think keeps its existing multi-source behavior since forcing it down to
+    one reading would defeat that mode's whole purpose.
+
+    Standard mode seeds evidence via _select_tool_actions before the
+    refinement loop below runs - symmetric with how Deep Think seeds via
+    _deep_think_research_plan - so a follow-up naming no subject of its own
+    ("what was the last fixture?") still resolves from conversation context,
+    and multiple free sources (knowledge base, web search, a live.* lookup)
+    can combine into one answer instead of stopping at the first hit. See
+    _select_tool_actions's docstring for why this replaced regex as the
+    primary mechanism here.
     """
     if not context.deep_think_mode:
-        weather_item = _weather_evidence_item(prompt)
-        if weather_item:
-            print(f"{Fore.CYAN}🌤️  Live weather lookup for: {prompt}{Style.RESET_ALL}")
-            _emit_status("Checking live weather...")
-            return [weather_item]
-        stock_item = _stock_evidence_item(prompt)
-        if stock_item:
-            print(f"{Fore.CYAN}📈 Live stock quote lookup for: {prompt}{Style.RESET_ALL}")
-            _emit_status("Checking live stock quote...")
-            return [stock_item]
-    elif _looks_like_weather_query(prompt) or _looks_like_stock_query(prompt):
-        print(f"{Fore.YELLOW}ℹ️ Deep Think mode is on, so the live weather/stock lookup is skipped for: "
+        subscription_evidence = _subscription_bypass(prompt)
+        if subscription_evidence:
+            return subscription_evidence
+        item = _try_live_lookup_bypasses(prompt)
+        if item:
+            return [item]
+    elif _looks_like_weather_query(prompt) or _looks_like_stock_query(prompt) or _looks_like_soccer_query(prompt):
+        print(f"{Fore.YELLOW}ℹ️ Deep Think mode is on, so the live weather/stock/soccer lookup is skipped for: "
               f"{prompt} (falling back to multi-source research).{Style.RESET_ALL}")
 
     _emit_status("Researching...")
@@ -2002,6 +3253,27 @@ def model_directed_web_research(prompt):
             evidence.extend(save_web_evidence(query, results))
             apply_corroboration(evidence)
             search_number += 1
+    else:
+        actions = _select_tool_actions(prompt)
+        for action in actions:
+            evidence.extend(_execute_research_tool_action(action, prompt))
+        if evidence:
+            # Return immediately instead of falling into the iterative loop
+            # below - a real, live-reported bug: letting the loop continue
+            # after this let _research_action's "you MUST search" instruction
+            # (written for the OLD flow, where evidence started empty) force
+            # 5 more generic web searches on top of an already-correct live
+            # soccer result, and apply_corroboration then diluted the live
+            # item's fixed, authoritative confidence using corroboration math
+            # meant for scraped web pages - the noisy searches ended up
+            # outranking the correct answer entirely, and the final reply
+            # confidently reported a fabricated 0-0 score. The model's
+            # multi-tool selection is a deliberate, considered choice of
+            # sources for this turn, not a tentative first guess to second-
+            # guess with more searching.
+            apply_corroboration(evidence)
+            persist_evidence_updates(evidence)
+            return sorted(evidence, key=lambda item: (item["truthfulness_confidence"], item["recency_confidence"]), reverse=True)
 
     near_duplicate_streak = 0
     while True:
@@ -2780,6 +4052,33 @@ def update_concerning_search(query):
         profile['notes'] = current_notes
         save_user_profile(profile)
 
+# Live-lookup and explicit-gap evidence items are short, already-curated
+# single-source blobs - often built specifically to carry a "you must say
+# X" instruction (e.g. _soccer_evidence_item's "Next match: UNKNOWN... you
+# must say this information is not currently available"). A real, reported
+# bug: summarize_text's blind first-N-sentences cut silently dropped that
+# instruction every time in standard mode - 2 sentences kept the team name
+# and the last result, but never reached the "UNKNOWN" sentence that came
+# after them, so the model answered as if it had never been told the fact
+# was unknown, because it genuinely never saw that sentence (confirmed via
+# a saved fact-check record: evidence correctly said "no scheduled next
+# match", the displayed answer confidently invented one anyway). Generic
+# multi-source web search content is the opposite case - long, noisy,
+# unstructured - and still benefits from trimming, so this is scoped to
+# just the search_provider values that mean "one curated, already-short
+# item," not applied to every evidence item uniformly.
+_UNSUMMARIZED_EVIDENCE_PROVIDERS = {
+    "open-meteo", "yahoo-finance", "espn", "soccer-unresolved", "soccer-standings-unavailable",
+}
+
+
+def _evidence_display_text(result, max_sentences):
+    content = result.get("content", "No content available")
+    if result.get("search_provider") in _UNSUMMARIZED_EVIDENCE_PROVIDERS:
+        return content
+    return summarize_text(content, max_sentences=max_sentences)
+
+
 def enhance_conversation_with_search(query, search_results, deep=False):
     """
     Use search results to create conversational flow with multiple perspectives
@@ -2807,7 +4106,7 @@ def enhance_conversation_with_search(query, search_results, deep=False):
                 f"Evidence {i+1} (confidence {result.get('truthfulness_confidence', 'n/a')}/100, "
                 f"corroborated by {len(result.get('corroborating_domains', []))} other domain(s); "
                 f"freshness {result.get('recency_confidence', 'n/a')}/100): "
-                f"{summarize_text(result.get('content', 'No content available'), max_sentences=summary_sentences)}\n"
+                f"{_evidence_display_text(result, summary_sentences)}\n"
                 f"Source: {result.get('url', 'unknown')}"
                 for i, result in enumerate(search_results[:evidence_limit])
                 if result and 'content' in result
@@ -2939,8 +4238,17 @@ def fact_check_answer(answer_text, evidence, user_prompt=""):
     below does it deterministically instead, and its output is appended
     after this LLM pass rather than folded into its prompt.
     """
-    if ollama is None or not evidence or not (answer_text or "").strip():
+    if ollama is None or not (answer_text or "").strip():
         return ""
+    if not evidence:
+        # No evidence at all - usually a live-lookup-shaped query (soccer/
+        # weather/stock) whose tool selection failed or was wrongly
+        # refused. The LLM checker pass below and the two evidence-diffing
+        # flags after it all need real evidence to compare against, so
+        # none of them can run here - see
+        # _flag_unsupported_live_lookup_claim's docstring for the one
+        # check that still can.
+        return _flag_unsupported_live_lookup_claim(answer_text, user_prompt)
     evidence_lines = "\n".join(
         f"[{i + 1}] {item.get('url', 'unknown')} - corroborated by "
         f"{len(item.get('corroborating_domains', []))} other independent domain(s): "
@@ -2978,8 +4286,10 @@ def fact_check_answer(answer_text, evidence, user_prompt=""):
     except Exception:
         result = ""
     figure_flags = _flag_unverified_dollar_figures(answer_text, evidence)
-    if figure_flags:
-        result = "\n".join(filter(None, [result, *figure_flags]))
+    next_match_flags = _flag_fabricated_next_match_claim(answer_text, evidence)
+    all_flags = figure_flags + next_match_flags
+    if all_flags:
+        result = "\n".join(filter(None, [result, *all_flags]))
     return result
 
 
@@ -3037,6 +4347,104 @@ def _flag_unverified_dollar_figures(answer_text, evidence):
         seen.add(normalized)
         flagged.append(f"[Unverified figure] {match.strip()} does not appear in any evidence source and may be fabricated.")
     return flagged
+
+
+# The exact marker string _soccer_evidence_item writes when
+# _fetch_soccer_team_matches found no upcoming fixture - see
+# _flag_fabricated_next_match_claim.
+_NEXT_MATCH_UNKNOWN_MARKER = "Next match: UNKNOWN"
+_NEXT_MATCH_CLAIM_PHRASES = (
+    "next match", "next game", "next fixture", "play next", "next scheduled",
+    "upcoming match", "upcoming fixture", "upcoming game",
+)
+_DATE_LIKE_PATTERN = re.compile(
+    r"\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|"
+    r"sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}\b"
+    r"|\b\d{4}-\d{2}-\d{2}\b"
+    r"|\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b",
+    re.IGNORECASE,
+)
+
+
+def _flag_fabricated_next_match_claim(answer_text, evidence):
+    """Deterministically flag an answer that states a specific "next match"
+    date/opponent when the evidence explicitly found none
+    (_soccer_evidence_item marks this UNKNOWN, not silence, precisely so
+    there's something unambiguous to check against here).
+
+    Live-tested and confirmed necessary, not just theoretical: even a
+    forceful in-evidence instruction ("this is a PAST match, NOT the next
+    one - you must say this information is not currently available") was
+    not reliably followed in the real chat pipeline - the model fabricated
+    an entirely new date instead of just relabeling the old one. Exact
+    marker/phrase/date-pattern presence is a check code can do perfectly;
+    a small local model respecting a negative instruction embedded in its
+    own context is not - the same lesson _flag_unverified_dollar_figures
+    already learned about this model tier, applied to a different failure
+    shape.
+    """
+    if not any(_NEXT_MATCH_UNKNOWN_MARKER in item.get("content", "") for item in evidence):
+        return []
+    lowered = (answer_text or "").lower()
+    if not any(phrase in lowered for phrase in _NEXT_MATCH_CLAIM_PHRASES):
+        return []
+    if not _DATE_LIKE_PATTERN.search(answer_text or ""):
+        return []
+    return [
+        "[Unverified] The evidence found no scheduled next match (explicitly marked unknown), but the "
+        "answer states one - treat any next-match date/opponent above as unconfirmed/possibly fabricated.",
+    ]
+
+
+_SCORE_LIKE_PATTERN = re.compile(r"\b\d{1,2}\s*-\s*\d{1,2}\b")
+
+
+def _flag_unsupported_live_lookup_claim(answer_text, user_prompt):
+    """Deterministically flag a specific-sounding claim (a date, a score, or
+    a dollar figure) in the answer to a weather/stock/soccer-shaped
+    question when fact_check_answer was given literally zero evidence to
+    check it against.
+
+    Covers a gap _flag_fabricated_next_match_claim and
+    _flag_unverified_dollar_figures both leave open: both compare a claim
+    against evidence that exists, but fact_check_answer never even reaches
+    them when evidence is empty - which is exactly the case for a
+    live-lookup query whose tool selection failed or was wrongly refused,
+    rather than one that ran and came back empty-handed. Real, live-
+    reported case: asked "who does Man United play next" right after
+    live.soccer_result's tool call was wrongly refused as "outside scope",
+    the model invented an opponent and date (Southampton, September 5,
+    2026) from nothing at all. With zero evidence there's also nothing for
+    an LLM checker pass to compare against, so this is the only check left
+    that can catch it - "does this answer sound this specific about a live
+    fact and did we retrieve any live fact at all" is something code can
+    tell perfectly, the same lesson the other two flags already apply to a
+    different failure shape.
+
+    Also in scope: a prompt matching a user subscription (core/
+    subscriptions.py) - the same "supposed to be grounded in a live source,
+    zero evidence means nothing backs this claim" logic applies whether the
+    live source was a regex-detected weather/stock/soccer shape or a
+    subscribed team/topic/website whose handler failed or found nothing.
+    """
+    if not (
+        _looks_like_soccer_query(user_prompt) or _looks_like_weather_query(user_prompt)
+        or _looks_like_stock_query(user_prompt) or _matching_subscription(user_prompt)
+    ):
+        return ""
+    answer_text = answer_text or ""
+    has_specific_claim = (
+        bool(_DATE_LIKE_PATTERN.search(answer_text))
+        or bool(_SCORE_LIKE_PATTERN.search(answer_text))
+        or bool(_ANSWER_DOLLAR_FIGURE_PATTERN.search(answer_text))
+    )
+    if not has_specific_claim:
+        return ""
+    return (
+        "[Unverified] No live data was actually retrieved for this question - the tool lookup failed or "
+        "was skipped - so any specific date, score, or figure in the answer above is unconfirmed and may "
+        "be entirely fabricated."
+    )
 
 # -------------------------------------
 # Agent System Functions
@@ -3154,7 +4562,7 @@ def get_agent_knowledge(agent_name):
                         with open(file_path, 'r', encoding='utf-8') as f:
                             content = f.read()
                             knowledge_content.append(f"=== {file} ===\n{content}\n")
-                    except:
+                    except OSError:
                         pass
     
     return "\n".join(knowledge_content) if knowledge_content else "No specialized knowledge base found."
@@ -3176,35 +4584,33 @@ def load_agent_memory(agent_name):
     if os.path.exists(memory_file):
         try:
             with open(memory_file, 'r', encoding='utf-8') as f:
-                import json
                 memory_data = json.load(f)
                 return memory_data.get('conversations', [])
-        except:
+        except (OSError, json.JSONDecodeError):
             pass
-    
+
     return []
 
 def save_agent_memory(agent_name, conversation_summary):
     """Save important conversation points for agent memory"""
     if not agent_name or not conversation_summary:
         return
-    
+
     memory_path = os.path.join(core_config.project_root(), "agent_memory")
     if not os.path.exists(memory_path):
         os.makedirs(memory_path)
-    
+
     memory_file = os.path.join(memory_path, f"{agent_name}_memory.json")
-    
+
     # Load existing memory
     memory_data = {'conversations': []}
     if os.path.exists(memory_file):
         try:
             with open(memory_file, 'r', encoding='utf-8') as f:
-                import json
                 memory_data = json.load(f)
-        except:
+        except (OSError, json.JSONDecodeError):
             pass
-    
+
     # Add new conversation summary
     from datetime import datetime
     new_entry = {
@@ -3212,20 +4618,19 @@ def save_agent_memory(agent_name, conversation_summary):
         'summary': conversation_summary,
         'topics': extract_topics_from_summary(conversation_summary)
     }
-    
+
     memory_data['conversations'].append(new_entry)
-    
+
     # Keep only last 20 conversations to manage memory size
     memory_data['conversations'] = memory_data['conversations'][-20:]
-    
+
     # Save updated memory
     try:
         with open(memory_file, 'w', encoding='utf-8') as f:
-            import json
             json.dump(memory_data, f, indent=2, ensure_ascii=False)
         events.publish(MEMORY_CREATED, agent_name=agent_name)
-    except:
-        pass
+    except OSError as e:
+        print(f"{Fore.YELLOW}⚠️  Failed to save agent memory for {agent_name}: {e}{Style.RESET_ALL}")
 
 def extract_topics_from_summary(summary):
     """Extract key topics from conversation summary for memory indexing"""
@@ -3377,6 +4782,10 @@ def job_command(args=None):
 # Knowledge Base Functions
 # -------------------------------------
 def record_to_knowledge_base(filename, content):
+    """Returns True on a real write, False on failure - a caller that
+    reports "saved" back to the user (e.g. ResearchTopicSkill) needs this
+    to be honest rather than assuming success just because no exception
+    reached it."""
     kb_path = os.path.join(core_config.project_root(), "knowledge_base")
     if not os.path.exists(kb_path):
         os.makedirs(kb_path)
@@ -3385,9 +4794,10 @@ def record_to_knowledge_base(filename, content):
     try:
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
-        events.publish(KNOWLEDGE_UPDATED, filename=safe_filename)
-    except:
-        pass
+    except OSError:
+        return False
+    events.publish(KNOWLEDGE_UPDATED, filename=safe_filename)
+    return True
 
 def record_learning_path(topic, resources):
     tutor_path = os.path.join(core_config.project_root(), "tutor_paths")
@@ -3398,8 +4808,8 @@ def record_learning_path(topic, resources):
     try:
         with open(file_path, "w", encoding="utf-8") as f:
             f.write("\n".join(resources))
-    except:
-        pass
+    except OSError as e:
+        print(f"{Fore.YELLOW}⚠️  Failed to save learning path for {topic!r}: {e}{Style.RESET_ALL}")
 
 def load_learning_paths():
     tutor_path = os.path.join(core_config.project_root(), "tutor_paths")
@@ -3414,7 +4824,7 @@ def load_learning_paths():
                     topic = os.path.splitext(file)[0]
                     resources = f.read().split("\n")
                     paths[topic] = resources
-            except:
+            except OSError:
                 pass
     return paths
 
@@ -3431,7 +4841,7 @@ def search_knowledge_base(topic):
                     content = f.read()
                     if re.search(topic, content, re.IGNORECASE):
                         results.append((file, content))
-            except:
+            except OSError:
                 pass
     return results
 
@@ -4140,12 +5550,32 @@ def _overnight_performance_line(label, performance):
     return f"{label}: {performance['attempted']} attempted, {performance['success_rate']:.0%} succeeded recently."
 
 
+def _historian_summary_text(stats):
+    """Short plain-text summary of a historian() result, for embedding in
+    the overnight report - historian() itself already prints a fuller
+    breakdown line by line for an interactive run; this mirrors the same
+    numbers rather than introducing a second, divergent set."""
+    kb, convo, memory = stats["knowledge_base"], stats["conversations"], stats["agent_memory"]
+    return (
+        f"Knowledge base: {kb['files_sorted']} file(s) sorted, {kb['duplicates_removed']} duplicate(s) removed, "
+        f"{kb['web_evidence_duplicates_removed']} stale web-evidence capture(s) removed.\n"
+        f"Conversations: {convo['conversations_merged']} merged into knowledge_base "
+        f"({convo['exchanges_saved']} exchange(s)), {convo['skipped_empty']} empty file(s) discarded.\n"
+        f"Agent memory: {memory['agents_cleaned']} agent file(s) cleaned, "
+        f"{memory['duplicates_removed']} duplicate entr{'y' if memory['duplicates_removed'] == 1 else 'ies'} removed."
+    )
+
+
 def run_overnight_cycle():
-    """Phase 16: sequences the two real autonomous pipelines that already
-    exist (self-improve, tool-generation) and reports on both together -
-    nothing here does anything /selfimprove or /generate don't already do
-    individually; this just runs them back to back and writes one combined
-    report, the way the roadmap's own "morning report" sketch asks for.
+    """Phase 16: sequences the three real autonomous pipelines that already
+    exist (self-improve, tool-generation, Historian cleanup) and reports on
+    all three together - nothing here does anything /selfimprove, /generate,
+    or /historian don't already do individually; this just runs them back to
+    back and writes one combined report, the way the roadmap's own "morning
+    report" sketch asks for. Historian runs for real (dry_run=False), not a
+    preview, since the point of scheduling this nightly is that saved
+    conversations and knowledge_base actually get deduped/merged/sorted
+    unattended - a preview here would just silently never clean anything up.
     Saved to knowledge_base/overnight_reports/ and returned as text - what
     the `feature: overnight` cron action logs, and what /overnight prints
     for a manual run."""
@@ -4158,6 +5588,8 @@ def run_overnight_cycle():
         _selfimprove_coding_chat, _selfimprove_root(), available_tools, agent="self-improve",
     )
 
+    historian_stats = historian(dry_run=False)
+
     self_improve_performance = evaluate_recent_performance(agent="self-improve")
     tool_gen_performance = evaluate_recent_performance(agent="tool-generator")
 
@@ -4165,6 +5597,7 @@ def run_overnight_cycle():
         f"☀️ GOOD MORNING — Overnight Learning Run #{run_number}\n\n"
         f"Self-improve:\n{self_improve_report}\n\n"
         f"Tool generation:\n{tool_gen_report}\n\n"
+        f"Historian cleanup:\n{_historian_summary_text(historian_stats)}\n\n"
         f"{_overnight_performance_line('Self-improve performance', self_improve_performance)}\n"
         f"{_overnight_performance_line('Tool-generation performance', tool_gen_performance)}\n\n"
         "Review pending tool proposals under gnosis_workspace/proposals/ and any staged "
@@ -4797,11 +6230,21 @@ def _load_cron_tasks():
 
 
 def _save_cron_tasks(tasks):
+    """Returns True/False. Callers deliberately don't fold this into their
+    own (success, error) return contract - the real crontab write is the
+    mutation that matters and is already checked separately; this is
+    best-effort bookkeeping (schedule/description/last_run) that shouldn't
+    be reported to the user as "your cron job failed" when it didn't. Still
+    printed, not silently swallowed - a real, live crontab entry existing
+    with no matching Gnosis record is a genuinely confusing state to debug
+    blind."""
     try:
         with open(_cron_tasks_path(), "w", encoding="utf-8") as handle:
             json.dump(tasks, handle, indent=2, ensure_ascii=False)
-    except OSError:
-        pass
+        return True
+    except OSError as e:
+        print(f"{Fore.YELLOW}⚠️  Failed to save cron task metadata: {e}{Style.RESET_ALL}")
+        return False
 
 
 def _read_crontab():
@@ -5721,8 +7164,8 @@ This insight could be valuable for:
         with open(insight_path, 'w', encoding='utf-8') as f:
             f.write(insight_content)
         print(f"{Fore.GREEN}💾 Saved insight to {agent_name} knowledge base{Style.RESET_ALL}")
-    except:
-        pass
+    except OSError as e:
+        print(f"{Fore.YELLOW}⚠️  Failed to save insight to {agent_name} knowledge base: {e}{Style.RESET_ALL}")
 
 # -------------------------------------
 # MAIN INTERACTION LOOP
@@ -6373,6 +7816,10 @@ def _register_tools():
     tool_registry.register(WebFetchTool(fetch_page_content))
     tool_registry.register(KnowledgeSearchTool(search_knowledge_base))
     tool_registry.register(KnowledgeWriteTool(record_to_knowledge_base))
+    tool_registry.register(SubscriptionsListTool(subscriptions.list_subscriptions))
+    tool_registry.register(LiveWeatherTool(_live_weather_lookup))
+    tool_registry.register(LiveStockQuoteTool(_live_stock_lookup))
+    tool_registry.register(LiveSoccerResultTool(_live_soccer_lookup))
     tool_registry.register(CronListTool(cron_list_entries))
     tool_registry.register(CronAddTool(cron_add))
     tool_registry.register(CronEditTool(cron_edit))
@@ -6417,7 +7864,8 @@ def _register_event_subscribers():
     anything from it yet (that's Phase 13). TASK_COMPLETED additionally
     gets the domain-specific handler above."""
     for event_name in (SEARCH_COMPLETED, TASK_COMPLETED, SKILL_CREATED,
-                        KNOWLEDGE_UPDATED, MEMORY_CREATED, TEST_PASSED, TEST_FAILED):
+                        KNOWLEDGE_UPDATED, MEMORY_CREATED, TEST_PASSED, TEST_FAILED,
+                        TOOL_SELECTION_MADE, TOOL_EXECUTION_COMPLETED, APP_STARTED):
         events.subscribe(event_name, lambda event_name=event_name, **payload: record_activity(event_name, **payload))
     events.subscribe(TASK_COMPLETED, _on_task_completed)
 
@@ -6425,6 +7873,10 @@ def _register_event_subscribers():
 _register_tools()
 _register_skills()
 _register_event_subscribers()
+events.publish(
+    APP_STARTED, main_model=MODELS.get("main"), coding_model=MODELS.get("coding"),
+    search_model=MODELS.get("search"), tool_count=len(tool_registry.list()), skill_count=len(skill_registry.list()),
+)
 
 
 def _read_next_prompt():
@@ -6466,6 +7918,15 @@ def _handle_unmatched_prompt(prompt):
         print(f"{Fore.CYAN}🧭 Letting the model plan web research...{Style.RESET_ALL}\n")
         evidence = model_directed_web_research(prompt)
         context.assistant_convo.append({"role": "system", "content": enhance_conversation_with_search(prompt, evidence, deep=context.deep_think_mode)})
+        tool_action = _select_tool_action(prompt)
+        if tool_action.get("tool"):
+            tool_summary = _execute_tool_action(tool_action)
+            if tool_summary:
+                print(f"{Fore.CYAN}🛠️  Model selected tool: {tool_action['tool']}{Style.RESET_ALL}")
+                context.assistant_convo.append({
+                    "role": "system",
+                    "content": f"Additional context from a Gnosis capability you chose to use:\n{tool_summary}",
+                })
         persona_prompt = get_persona_system_prompt()
         if persona_prompt:
             context.assistant_convo.append({"role": "system", "content": persona_prompt})
@@ -6508,6 +7969,16 @@ def _handle_unmatched_prompt(prompt):
     if context_info:
         context_message = " | ".join(context_info)
         context.assistant_convo.append({"role": "system", "content": f"[Context: {context_message}]"})
+
+    tool_action = _select_tool_action(processed_prompt)
+    if tool_action.get("tool"):
+        tool_summary = _execute_tool_action(tool_action)
+        if tool_summary:
+            print(f"{Fore.CYAN}🛠️  Model selected tool: {tool_action['tool']}{Style.RESET_ALL}")
+            context.assistant_convo.append({
+                "role": "system",
+                "content": f"Additional context from a Gnosis capability you chose to use:\n{tool_summary}",
+            })
 
     persona_prompt = get_persona_system_prompt()
     if persona_prompt:

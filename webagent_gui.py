@@ -4,8 +4,6 @@ GUI for WebAgent - Modern chat interface with voice and web search capabilities
 
 import os
 import sys
-import threading
-import asyncio
 import html
 from datetime import datetime
 
@@ -27,7 +25,7 @@ if __name__ == "__main__":
 
 try:
     from PyQt6.QtWidgets import (
-        QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+        QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
         QTextEdit, QPushButton, QLabel, QComboBox, QScrollArea,
         QFrame, QMessageBox, QStatusBar, QStackedLayout, QDialog, QLineEdit,
         QFileDialog, QRadioButton, QButtonGroup, QListWidget, QStackedWidget,
@@ -48,7 +46,14 @@ import webagent
 import agent_dialogue
 import code_review
 from core import config as core_config
-from core.activity_log import load_activity
+from games.zuma_endless import ZumaEndlessWidget
+from games.solitaire import SolitaireWidget
+from games.sudoku import SudokuWidget, DIFFICULTIES as SUDOKU_DIFFICULTIES
+from games.mystery import MysteryWidget
+from games.idle_island import IdleIslandWidget
+from worklog import WorklogWidget
+from core import subscriptions
+from core.activity_log import load_activity, clear_activity
 from memory.experience import load_experiences
 
 BG_APP = "#16161c"
@@ -66,6 +71,8 @@ ACCENT = "#7c5cff"
 ACCENT_LIGHT = "#9d85ff"
 ACCENT_HOVER = "#8f6fff"
 ACCENT_PRESSED = "#6a4cf0"
+SUCCESS_GREEN = "#3ecf8e"
+SUCCESS_GREEN_HOVER = "#4ee0a0"
 
 CHAT_BG_OPAQUE = f"""
     QTextEdit#chatDisplay {{
@@ -522,6 +529,52 @@ class MouthWidget(QWidget):
         painter.drawEllipse(lip_rect)
 
 
+_SUBSCRIPTION_TYPE_ICONS = {"team": "⚽", "topic": "📰", "website": "🌐", "weather": "🌦️"}
+
+# The Subscriptions page's curated catalog - real, working sources grouped
+# into the categories the button grid renders one row of buttons per. A
+# starter set, not gospel: every entry here is a real, reputable source
+# real enough to demo, but which specific outlets/teams/sites belong is an
+# editorial call meant to be revisited, not treated as final. Weather is
+# deliberately absent - it has no fixed "source" list the way News/Sports
+# do, so it gets its own validated-text-entry section instead (see
+# _build_weather_subscription_section) rather than a catalog category here.
+#
+# Sports Leagues surfaces specific popular TEAMS, not league-wide
+# standings - the only implemented live sports scraper
+# (webagent._resolve_soccer_team/_fetch_soccer_team_matches, ESPN-backed)
+# is per-team; a true league-standings source would be new scraper work.
+SUBSCRIPTION_CATALOG = {
+    "News Sources": [
+        {"name": "BBC News", "type": "website", "url": "https://www.bbc.com/news"},
+        {"name": "Reuters", "type": "website", "url": "https://www.reuters.com"},
+        {"name": "Associated Press", "type": "website", "url": "https://apnews.com"},
+        {"name": "NPR", "type": "website", "url": "https://www.npr.org"},
+    ],
+    "Sports Leagues": [
+        {"name": "Manchester United", "type": "team"},
+        {"name": "Arsenal", "type": "team"},
+        {"name": "Real Madrid", "type": "team"},
+        {"name": "Barcelona", "type": "team"},
+        {"name": "Bayern Munich", "type": "team"},
+    ],
+    "Entertainment": [
+        {"name": "IMDb", "type": "website", "url": "https://www.imdb.com"},
+        {"name": "Rotten Tomatoes", "type": "website", "url": "https://www.rottentomatoes.com"},
+        {"name": "Variety", "type": "website", "url": "https://variety.com"},
+    ],
+    "Spirituality": [
+        {"name": "Tricycle (Buddhist Review)", "type": "website", "url": "https://tricycle.org"},
+        {"name": "On Being", "type": "website", "url": "https://onbeing.org"},
+        {"name": "Center for Action and Contemplation", "type": "website", "url": "https://cac.org"},
+    ],
+    "Misc": [
+        {"name": "Wikipedia Current Events", "type": "website", "url": "https://en.wikipedia.org/wiki/Portal:Current_events"},
+        {"name": "Hacker News", "type": "website", "url": "https://news.ycombinator.com"},
+    ],
+}
+
+
 class WebAgentGUI(QMainWindow):
     """Main GUI window for WebAgent"""
 
@@ -533,7 +586,6 @@ class WebAgentGUI(QMainWindow):
         self.setStyleSheet(self.get_stylesheet())
 
         self.response_worker = None
-        self.search_worker = None
         self.current_response = ""
         self.assistant_message_started = False
 
@@ -546,6 +598,18 @@ class WebAgentGUI(QMainWindow):
         self.mouth_timer = QTimer(self)
         self.mouth_timer.timeout.connect(self._update_mouth)
         self.mouth_timer.start(80)
+
+    def closeEvent(self, event):
+        """Every game widget autosaves on its own timer already, but that
+        can be up to 15-30s stale - explicitly flushing each one's
+        save_now() here means closing the app (or restarting it) never
+        loses whatever progress happened since the last autosave tick."""
+        for widget in (
+            self.zuma_widget, self.solitaire_widget, self.sudoku_widget,
+            self.mystery_widget, self.idle_island_widget,
+        ):
+            widget.save_now()
+        super().closeEvent(event)
 
     def _update_mouth(self):
         enabled = webagent.context.tts_mode
@@ -571,7 +635,10 @@ class WebAgentGUI(QMainWindow):
         self.nav_list.setObjectName("navList")
         self.nav_list.setFixedWidth(180)
         self.nav_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        for label in ("💬  Chat", "🔄  Self-Improve", "📊  Report", "📦  Proposals", "🧠  Knowledge"):
+        for label in (
+            "💬  Chat", "🔄  Self-Improve", "📊  Report", "📦  Proposals", "🧠  Knowledge",
+            "🔔  Subscriptions", "🎮  Games", "🏝️  Idle Island", "🗂️  Work Tracker",
+        ):
             self.nav_list.addItem(label)
         root_layout.addWidget(self.nav_list)
 
@@ -583,6 +650,12 @@ class WebAgentGUI(QMainWindow):
         self.pages.addWidget(self._build_report_page())
         self.pages.addWidget(self._build_proposals_page())
         self.pages.addWidget(self._build_knowledge_page())
+        self.pages.addWidget(self._build_subscriptions_page())
+        self.pages.addWidget(self._build_games_page())
+        self.idle_island_widget = IdleIslandWidget()
+        self.pages.addWidget(self.idle_island_widget)
+        self.worklog_widget = WorklogWidget()
+        self.pages.addWidget(self.worklog_widget)
 
         self.nav_list.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.nav_list.setCurrentRow(0)
@@ -697,10 +770,6 @@ class WebAgentGUI(QMainWindow):
         self.web_search_check.toggled.connect(self.toggle_web_search)
         self.web_search_check.setChecked(webagent.context.web_search_mode)
         toggles_row.addWidget(self.web_search_check)
-
-        self.reasoning_check = toggle_button("🧠 Reason")
-        self.reasoning_check.toggled.connect(self.toggle_reasoning_mode)
-        toggles_row.addWidget(self.reasoning_check)
 
         self.deep_think_check = toggle_button(
             "🔬 Think", tooltip="Research multiple sources and return a structured analytical brief."
@@ -1045,6 +1114,12 @@ class WebAgentGUI(QMainWindow):
 
         activity_page = QWidget()
         activity_layout = QVBoxLayout(activity_page)
+        activity_button_row = QHBoxLayout()
+        activity_button_row.addStretch()
+        clear_activity_button = QPushButton("Clear Log")
+        clear_activity_button.clicked.connect(self._clear_activity_log)
+        activity_button_row.addWidget(clear_activity_button)
+        activity_layout.addLayout(activity_button_row)
         self.activity_output = QTextEdit()
         self.activity_output.setObjectName("chatDisplay")
         self.activity_output.setReadOnly(True)
@@ -1106,6 +1181,319 @@ class WebAgentGUI(QMainWindow):
             payload = {k: v for k, v in record.items() if k not in ("event", "timestamp")}
             lines.append(f"[{record.get('timestamp', '?')}] {record.get('event', '?')} - {json.dumps(payload)}")
         self.activity_output.setPlainText("\n".join(lines))
+
+    def _clear_activity_log(self):
+        reply = QMessageBox.question(
+            self,
+            "Clear Activity Log",
+            "Are you sure you want to clear the activity log? This cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            clear_activity()
+            self._refresh_activity_log()
+
+    def _build_subscriptions_page(self):
+        """Manage user-declared subscriptions (core/subscriptions.py): rows
+        of preset buttons per category (SUBSCRIPTION_CATALOG), each already
+        wired to a known source, plus a validated free-text section for
+        Weather (no fixed source list applies there). A message matching a
+        subscribed source skips per-message regex/model guessing - see
+        webagent.py's _subscription_bypass (wired into
+        model_directed_web_research)."""
+        page = QWidget()
+        outer_layout = QVBoxLayout(page)
+        outer_layout.setContentsMargins(15, 15, 15, 15)
+        outer_layout.setSpacing(10)
+        outer_layout.addWidget(self._section_title("🔔 Subscriptions"))
+        outer_layout.addWidget(self._muted_label(
+            "Sources you follow, by category. A message matching one of these skips "
+            "per-message guessing and goes straight to a known source."
+        ))
+
+        self.subscription_status_label = self._muted_label("")
+        outer_layout.addWidget(self.subscription_status_label)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setSpacing(18)
+
+        self.subscription_catalog_buttons = {}  # (type, name) -> QPushButton
+        for category, items in SUBSCRIPTION_CATALOG.items():
+            scroll_layout.addWidget(self._build_subscription_category_section(category, items))
+            if category == "Sports Leagues":  # Weather sits between Sports Leagues and Entertainment
+                scroll_layout.addWidget(self._build_weather_subscription_section())
+        scroll_layout.addStretch()
+
+        scroll.setWidget(scroll_content)
+        outer_layout.addWidget(scroll, 1)
+
+        self._refresh_subscription_buttons()
+        self._refresh_weather_subscriptions()
+        return page
+
+    def _build_games_page(self):
+        """Each game is its own pure-PyQt6 QPainter widget, no extra
+        dependencies, and its own module (games/zuma_endless.py,
+        games/solitaire.py, games/sudoku.py) rather than inlined here, so
+        this file never owns any game's logic - one QTabWidget tab per
+        game, same pattern the Knowledge page already uses for its
+        sub-views."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(10)
+        layout.addWidget(self._section_title("🎮 Games"))
+
+        tabs = QTabWidget()
+        layout.addWidget(tabs, 1)
+
+        zuma_page = QWidget()
+        zuma_layout = QVBoxLayout(zuma_page)
+        zuma_layout.addWidget(self._muted_label(
+            "Zuma, but endless - match 3+ of the same color before the chain reaches the "
+            "center. Aim with the mouse, left click or Space to shoot, right click or Q to "
+            "swap your loaded ball."
+        ))
+        zuma_row = QHBoxLayout()
+        zuma_row.addStretch()
+        self.zuma_widget = ZumaEndlessWidget()
+        zuma_row.addWidget(self.zuma_widget)
+        zuma_row.addStretch()
+        zuma_layout.addLayout(zuma_row)
+        zuma_layout.addStretch()
+        tabs.addTab(zuma_page, "Zuma Endless")
+
+        solitaire_page = QWidget()
+        solitaire_layout = QVBoxLayout(solitaire_page)
+        solitaire_layout.addWidget(self._muted_label(
+            "Klondike Solitaire - drag cards between piles, double-click to send a card to "
+            "its foundation, Ctrl+Z to undo, N for a new game."
+        ))
+        solitaire_row = QHBoxLayout()
+        solitaire_row.addStretch()
+        self.solitaire_widget = SolitaireWidget()
+        solitaire_row.addWidget(self.solitaire_widget)
+        solitaire_row.addStretch()
+        solitaire_layout.addLayout(solitaire_row)
+        solitaire_layout.addStretch()
+        tabs.addTab(solitaire_page, "Solitaire")
+
+        sudoku_page = QWidget()
+        sudoku_layout = QVBoxLayout(sudoku_page)
+        sudoku_layout.addWidget(self._muted_label(
+            "Sudoku - click a cell and type 1-9, Backspace to clear, arrow keys to move. "
+            "Wrong numbers are checked instantly and highlighted in red - 5 mistakes and it's game over."
+        ))
+        sudoku_controls = QHBoxLayout()
+        sudoku_controls.addWidget(QLabel("Difficulty:"))
+        self.sudoku_difficulty_combo = QComboBox()
+        self.sudoku_difficulty_combo.addItems(list(SUDOKU_DIFFICULTIES.keys()))
+        self.sudoku_difficulty_combo.setCurrentText("Medium")
+        sudoku_controls.addWidget(self.sudoku_difficulty_combo)
+        sudoku_new_game_button = QPushButton("New Game")
+        sudoku_new_game_button.clicked.connect(
+            lambda: self.sudoku_widget._new_game(self.sudoku_difficulty_combo.currentText())
+        )
+        sudoku_controls.addWidget(sudoku_new_game_button)
+        sudoku_controls.addStretch()
+        sudoku_layout.addLayout(sudoku_controls)
+        sudoku_row = QHBoxLayout()
+        sudoku_row.addStretch()
+        self.sudoku_widget = SudokuWidget()
+        sudoku_row.addWidget(self.sudoku_widget)
+        sudoku_row.addStretch()
+        sudoku_layout.addLayout(sudoku_row)
+        sudoku_layout.addStretch()
+        tabs.addTab(sudoku_page, "Sudoku")
+
+        mystery_page = QWidget()
+        mystery_layout = QVBoxLayout(mystery_page)
+        mystery_row = QHBoxLayout()
+        self.mystery_widget = MysteryWidget()
+        mystery_row.addWidget(self.mystery_widget, 1)
+        mystery_layout.addLayout(mystery_row)
+        tabs.addTab(mystery_page, "Mystery")
+
+        return page
+
+    def _build_collapsible_section(self, title, content, expanded=True):
+        """A category section whose body can be collapsed - the catalog is
+        expected to keep growing as more sources get drilled into per
+        category, and a long page of always-expanded button grids won't
+        stay usable once there are many more of them than today's 5-6
+        categories."""
+        section = QWidget()
+        layout = QVBoxLayout(section)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        toggle = QPushButton(f"{'▼' if expanded else '▶'}  {title}")
+        toggle.setCheckable(True)
+        toggle.setChecked(expanded)
+        toggle.setObjectName("categoryToggle")
+        toggle.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        content.setVisible(expanded)
+        toggle.toggled.connect(lambda checked: self._on_category_toggled(checked, title, toggle, content))
+        layout.addWidget(toggle)
+        layout.addWidget(content)
+        return section
+
+    def _on_category_toggled(self, checked, title, toggle, content):
+        toggle.setText(f"{'▼' if checked else '▶'}  {title}")
+        content.setVisible(checked)
+
+    def _build_subscription_category_section(self, category, items):
+        content = QWidget()
+        grid = QGridLayout(content)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setSpacing(8)
+        columns = 4
+        for index, item in enumerate(items):
+            button = QPushButton(item["name"])
+            button.setObjectName("subscriptionButton")
+            button.setCheckable(True)
+            self._set_subscription_button_style(button, "off")
+            button.toggled.connect(
+                lambda checked, item=item, button=button: self._on_catalog_button_toggled(checked, item, button)
+            )
+            self.subscription_catalog_buttons[(item["type"], item["name"])] = button
+            grid.addWidget(button, index // columns, index % columns)
+        return self._build_collapsible_section(category, content)
+
+    def _build_weather_subscription_section(self):
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addWidget(self._muted_label(
+            "No preset list here - type a location and it's validated against the live "
+            "weather source before saving."
+        ))
+
+        add_row = QHBoxLayout()
+        self.weather_location_input = QLineEdit()
+        self.weather_location_input.setPlaceholderText("City, state/country (e.g. Tucson, AZ)")
+        add_row.addWidget(self.weather_location_input, 1)
+        self.weather_add_button = QPushButton("+ Add")
+        self.weather_add_button.clicked.connect(self._add_weather_subscription_clicked)
+        add_row.addWidget(self.weather_add_button)
+        layout.addLayout(add_row)
+
+        self.weather_grid = QGridLayout()
+        self.weather_grid.setSpacing(8)
+        layout.addLayout(self.weather_grid)
+        return self._build_collapsible_section("Weather", content)
+
+    def _set_subscription_button_style(self, button, state):
+        """state is "off" (grey - not subscribed) or "on" (green -
+        subscribed). A failed subscribe attempt reverts to "off" rather than
+        a distinct error color - the failure reason still shows in
+        subscription_status_label. A Qt dynamic property + unpolish/polish,
+        not setStyleSheet, so this stays driven by the shared
+        #subscriptionButton QSS rules (get_stylesheet) rather than an inline
+        style that would need to be kept in sync by hand."""
+        button.setProperty("subState", state)
+        button.style().unpolish(button)
+        button.style().polish(button)
+
+    def _refresh_subscription_buttons(self):
+        subscribed = {(r["type"], r["name"].casefold()) for r in subscriptions.list_subscriptions()}
+        for (sub_type, name), button in self.subscription_catalog_buttons.items():
+            is_subscribed = (sub_type, name.casefold()) in subscribed
+            button.blockSignals(True)
+            button.setChecked(is_subscribed)
+            button.blockSignals(False)
+            self._set_subscription_button_style(button, "on" if is_subscribed else "off")
+
+    def _on_catalog_button_toggled(self, checked, item, button):
+        if checked:
+            self._subscribe_catalog_item(item, button)
+        else:
+            self._unsubscribe_catalog_item(item, button)
+
+    def _subscribe_catalog_item(self, item, button):
+        button.setEnabled(False)
+        self.subscription_status_label.setText(f'Adding "{item["name"]}"...')
+        if item["type"] == "website":
+            add_fn = lambda: webagent.add_website_subscription(item["name"], item["url"])  # noqa: E731
+        else:
+            add_fn = lambda: webagent.add_team_subscription(item["name"])  # noqa: E731
+
+        self._subscription_worker = CycleWorker(add_fn)
+        self._subscription_worker.result_ready.connect(
+            lambda record, button=button: self._on_catalog_subscribe_success(record, button)
+        )
+        self._subscription_worker.error_occurred.connect(
+            lambda message, button=button: self._on_catalog_subscribe_error(message, button)
+        )
+        self._subscription_worker.start()
+
+    def _on_catalog_subscribe_success(self, record, button):
+        self.subscription_status_label.setText(f'Subscribed to "{record["name"]}".')
+        self._set_subscription_button_style(button, "on")
+        button.setEnabled(True)
+
+    def _on_catalog_subscribe_error(self, message, button):
+        self.subscription_status_label.setText(message)
+        button.blockSignals(True)
+        button.setChecked(False)
+        button.blockSignals(False)
+        self._set_subscription_button_style(button, "off")
+        button.setEnabled(True)
+
+    def _unsubscribe_catalog_item(self, item, button):
+        lowered = item["name"].casefold()
+        for record in subscriptions.list_subscriptions(sub_type=item["type"]):
+            if record["name"].casefold() == lowered:
+                subscriptions.remove_subscription(record["id"])
+                self.subscription_status_label.setText(f'Unsubscribed from "{item["name"]}".')
+                break
+        self._set_subscription_button_style(button, "off")
+
+    def _refresh_weather_subscriptions(self):
+        while self.weather_grid.count():
+            taken = self.weather_grid.takeAt(0)
+            widget = taken.widget()
+            if widget:
+                widget.deleteLater()
+        columns = 4
+        for index, record in enumerate(subscriptions.list_subscriptions(sub_type="weather")):
+            button = QPushButton(f'{record["name"]} ✕')
+            button.setObjectName("subscriptionButton")
+            self._set_subscription_button_style(button, "on")  # only ever rendered for an already-subscribed location
+            button.clicked.connect(lambda _checked=False, record=record: self._remove_weather_subscription_clicked(record))
+            self.weather_grid.addWidget(button, index // columns, index % columns)
+
+    def _add_weather_subscription_clicked(self):
+        location = self.weather_location_input.text().strip()
+        if not location:
+            self.subscription_status_label.setText("Enter a location first.")
+            return
+        self.weather_add_button.setEnabled(False)
+        self.subscription_status_label.setText("Adding...")
+        add_fn = lambda: webagent.add_weather_subscription(location)  # noqa: E731
+        self._subscription_worker = CycleWorker(add_fn)
+        self._subscription_worker.result_ready.connect(self._on_weather_subscription_added)
+        self._subscription_worker.error_occurred.connect(self._on_weather_subscription_add_error)
+        self._subscription_worker.start()
+
+    def _on_weather_subscription_added(self, record):
+        self.subscription_status_label.setText(f'Added "{record["name"]}".')
+        self.weather_location_input.clear()
+        self._refresh_weather_subscriptions()
+        self.weather_add_button.setEnabled(True)
+
+    def _on_weather_subscription_add_error(self, message):
+        self.subscription_status_label.setText(message)
+        self.weather_add_button.setEnabled(True)
+
+    def _remove_weather_subscription_clicked(self, record):
+        subscriptions.remove_subscription(record["id"])
+        self.subscription_status_label.setText(f'Removed "{record["name"]}".')
+        self._refresh_weather_subscriptions()
 
     def _section_title(self, text):
         label = QLabel(text)
@@ -1225,13 +1613,11 @@ class WebAgentGUI(QMainWindow):
 
     def toggle_unfiltered_mode(self, checked):
         if checked:
-            self.reasoning_check.setChecked(False)
             self.coding_check.setChecked(False)
         webagent.context.unfiltered_mode = checked
 
     def toggle_coding_mode(self, checked):
         if checked:
-            self.reasoning_check.setChecked(False)
             self.unfiltered_check.setChecked(False)
         webagent.context.coding_mode = checked
 
@@ -1300,13 +1686,6 @@ class WebAgentGUI(QMainWindow):
     def toggle_web_search(self, checked):
         """Toggle web search mode"""
         webagent.context.web_search_mode = checked
-
-    def toggle_reasoning_mode(self, checked):
-        """Toggle reasoning mode"""
-        if checked:
-            self.unfiltered_check.setChecked(False)
-            self.coding_check.setChecked(False)
-        webagent.context.reasoning_mode = checked
 
     def toggle_deep_think_mode(self, checked):
         """Toggle evidence-led, structured web research."""
@@ -1445,6 +1824,29 @@ class WebAgentGUI(QMainWindow):
                 color: {TEXT_MUTED};
                 border: 1px solid {BORDER};
                 background-color: transparent;
+            }}
+            QPushButton#subscriptionButton {{
+                background-color: {BG_ELEVATED};
+                color: {TEXT_MUTED};
+                border: 1px solid {BORDER};
+            }}
+            QPushButton#subscriptionButton:hover {{
+                border: 1px solid {BORDER_LIGHT};
+                color: {TEXT_SECONDARY};
+            }}
+            QPushButton#subscriptionButton[subState="on"] {{
+                background-color: {SUCCESS_GREEN};
+                color: white;
+                border: 1px solid {SUCCESS_GREEN};
+                font-weight: 600;
+            }}
+            QPushButton#subscriptionButton[subState="on"]:hover {{
+                background-color: {SUCCESS_GREEN_HOVER};
+                border: 1px solid {SUCCESS_GREEN_HOVER};
+            }}
+            QPushButton#subscriptionButton:disabled {{
+                color: {TEXT_MUTED};
+                border: 1px solid {BORDER};
             }}
             QScrollBar:vertical {{
                 background: transparent;

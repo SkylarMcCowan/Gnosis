@@ -45,5 +45,5 @@ class ResearchTopicSkill(Skill):
         content = content or top_result.get("content", "")
 
         filename = _filename_for_topic(topic)
-        tool_registry.execute("knowledge.write", filename=filename, content=content)
-        return {"topic": topic, "source": "web", "results": search_results, "saved": True, "filename": filename}
+        saved = tool_registry.execute("knowledge.write", filename=filename, content=content)
+        return {"topic": topic, "source": "web", "results": search_results, "saved": bool(saved), "filename": filename}

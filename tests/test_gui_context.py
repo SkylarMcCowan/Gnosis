@@ -69,11 +69,6 @@ def test_toggle_web_search_updates_context(gui):
     assert webagent.context.web_search_mode is False
 
 
-def test_toggle_reasoning_mode_updates_context(gui):
-    gui.toggle_reasoning_mode(True)
-    assert webagent.context.reasoning_mode is True
-
-
 def test_toggle_deep_think_mode_updates_context(gui):
     gui.toggle_deep_think_mode(True)
     assert webagent.context.deep_think_mode is True

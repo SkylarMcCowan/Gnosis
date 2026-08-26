@@ -1,8 +1,9 @@
-"""Regression tests for core/activity_log.py - record_activity/load_activity.
+"""Regression tests for core/activity_log.py - record_activity/load_activity/
+clear_activity.
 """
 import os
 
-from core.activity_log import load_activity, record_activity
+from core.activity_log import clear_activity, load_activity, record_activity
 
 
 def test_record_and_load_activity_round_trip(isolated_data_dir):
@@ -46,3 +47,26 @@ def test_load_activity_never_creates_the_directory(isolated_data_dir):
     have the side effect of creating on-disk state that wasn't there."""
     load_activity()
     assert not os.path.exists(os.path.join(isolated_data_dir, "activity"))
+
+
+def test_clear_activity_removes_recorded_entries(isolated_data_dir):
+    record_activity("SEARCH_COMPLETED", query="a")
+    assert load_activity() != []
+
+    clear_activity()
+
+    assert load_activity() == []
+
+
+def test_clear_activity_is_a_noop_when_nothing_was_recorded(isolated_data_dir):
+    clear_activity()  # must not raise
+    assert load_activity() == []
+
+
+def test_recording_works_again_after_clearing(isolated_data_dir):
+    record_activity("SEARCH_COMPLETED", query="a")
+    clear_activity()
+
+    record_activity("SEARCH_COMPLETED", query="b")
+
+    assert [e["query"] for e in load_activity()] == ["b"]

@@ -9,12 +9,21 @@ import webagent  # noqa: E402  (must follow the sys.path fix above)
 from core import config as core_config  # noqa: E402
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def isolated_data_dir(tmp_path, monkeypatch):
     """Redirect every on-disk store webagent resolves through
     core.config.project_root() (agent_memory/, knowledge_base/, tutor_paths/,
-    cron/, conversations/) into a scratch directory, so tests never read or
-    write the project's real data."""
+    cron/, conversations/, activity/) into a scratch directory, so tests
+    never read or write the project's real data.
+
+    autouse: any test that exercises a real (non-monkeypatched) code path
+    publishing an event - _select_tool_action, _execute_tool_action,
+    model_directed_web_research, etc. - hits record_activity, which is
+    wired as a real global subscriber at webagent.py import time. Without
+    this being on by default, forgetting to request the fixture silently
+    wrote literal test prompts, fake models, and canned "boom" errors into
+    the project's real activity/log.jsonl (a live-reported bug: that file
+    is what the GUI's Activity Log view reads)."""
     monkeypatch.setattr(core_config, "_root_override", str(tmp_path))
     return tmp_path
 

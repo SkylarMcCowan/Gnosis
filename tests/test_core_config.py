@@ -5,7 +5,11 @@ through instead of computing os.path.dirname(__file__) locally 21 times.
 from core import config as core_config
 
 
-def test_project_root_defaults_to_the_real_checkout():
+def test_project_root_defaults_to_the_real_checkout(monkeypatch):
+    """isolated_data_dir is autouse (see tests/conftest.py) so every test
+    gets an overridden root by default - this test explicitly undoes that
+    to check the real, unpatched default."""
+    monkeypatch.setattr(core_config, "_root_override", None)
     assert core_config.project_root().endswith("Gnosis")
     assert core_config.path("knowledge_base") == core_config.project_root() + "/knowledge_base"
 

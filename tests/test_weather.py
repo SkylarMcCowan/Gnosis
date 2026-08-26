@@ -165,6 +165,7 @@ def test_model_directed_web_research_does_not_short_circuit_in_deep_think_mode(i
 def test_model_directed_web_research_falls_back_to_search_when_weather_lookup_fails(isolated_data_dir, monkeypatch):
     webagent.context.deep_think_mode = False
     monkeypatch.setattr(webagent, "fetch_current_weather", lambda location: None)
+    monkeypatch.setattr(webagent, "_select_tool_actions", lambda prompt: [])
     monkeypatch.setattr(webagent.tool_registry.get("web.search"), "_search_fn", lambda query: [])
     monkeypatch.setattr(webagent, "_research_action", lambda prompt, evidence, searches_used: {"action": "answer"})
 

@@ -31,6 +31,18 @@ def record_activity(event_name, **payload):
         f.write(json.dumps(entry) + "\n")
 
 
+def clear_activity():
+    """Delete the activity log file (a fresh one is created on the next
+    record_activity call). Used by the GUI's "Clear Activity Log" button -
+    the log is meant to fill up freely for later diagnosis, so it needs an
+    explicit, deliberate way to reset it rather than growing forever."""
+    path = _activity_log_path()
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+
+
 def load_activity(limit=None, event_name=None):
     path = _activity_log_path()
     if not os.path.isfile(path):

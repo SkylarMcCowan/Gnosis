@@ -15,6 +15,7 @@ def test_model_directed_web_research_runs_one_search_then_answers(isolated_data_
         "search_provider": "test",
     }
     monkeypatch.setattr(webagent.tool_registry.get("web.search"), "_search_fn", lambda query: [fake_result])
+    monkeypatch.setattr(webagent, "_select_tool_actions", lambda prompt: [])
 
     decisions = iter([
         {"action": "search", "query": "test query"},
@@ -50,6 +51,7 @@ def test_model_directed_web_research_stops_on_near_duplicate_queries(isolated_da
     reluctant messenger book" -> "reluctant messenger book title" -> ...)
     must not be allowed to search indefinitely just because no two queries
     are an exact match - see TODO.md Phase 6's repeated-query cutoff item."""
+    monkeypatch.setattr(webagent, "_select_tool_actions", lambda prompt: [])
     search_calls = []
     monkeypatch.setattr(
         webagent.tool_registry.get("web.search"), "_search_fn",

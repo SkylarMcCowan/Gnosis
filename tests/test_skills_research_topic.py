@@ -59,6 +59,23 @@ def test_searches_the_web_and_saves_findings_on_a_knowledge_miss(monkeypatch):
     ]
 
 
+def test_reports_saved_false_when_knowledge_write_actually_fails(monkeypatch):
+    """Real, reported bug: record_to_knowledge_base used to swallow a write
+    failure silently and this skill hardcoded "saved": True regardless -
+    the skill now trusts knowledge.write's real return value instead."""
+    search_results = [{"title": "T", "url": "https://example.com/a", "content": "snippet"}]
+    calls = _fake_dispatcher(monkeypatch, {
+        "knowledge.search": [],
+        "web.search": search_results,
+        "web.fetch": "full page content",
+        "knowledge.write": False,
+    })
+
+    result = ResearchTopicSkill().execute(topic="stoicism")
+
+    assert result["saved"] is False
+
+
 def test_falls_back_to_the_search_snippet_when_fetch_returns_nothing(monkeypatch):
     search_results = [{"title": "T", "url": "https://example.com/a", "content": "snippet only"}]
     calls = _fake_dispatcher(monkeypatch, {

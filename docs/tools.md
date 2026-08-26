@@ -98,6 +98,30 @@ Save content to a named file in the knowledge base.
   - `filename`: string
   - `content`: string
 
+## `live.soccer_result`
+
+Get a soccer team's most recent match result (opponent, score, competition, date) and next scheduled fixture if any, covering that team's domestic league plus UEFA Champions League/Europa League. Use for any question about a soccer team's last/next match, score, or fixture.
+
+- Permission: `SAFE`
+- Parameters:
+  - `team`: string - a soccer team name (e.g. "Manchester United")
+
+## `live.stock_quote`
+
+Get a live stock/share price for a public company: current price, previous close, day's high/low, exchange, and currency, as of right now. Use for any question about a current/today's stock or share price.
+
+- Permission: `SAFE`
+- Parameters:
+  - `company_or_ticker`: string - a company name (e.g. "Microsoft") or ticker symbol (e.g. "MSFT")
+
+## `live.weather`
+
+Get the current live weather for a place: temperature, feels-like temperature, conditions (clear/rain/snow/etc.), humidity, and wind speed, observed right now - not a multi-hour forecast. Use for any question about current/today's weather.
+
+- Permission: `SAFE`
+- Parameters:
+  - `location`: string - a city, region, or place name
+
 ## `repo.audit`
 
 Summarize the repository: file/line counts, TODO/FIXME findings, large files, tests folder presence.
@@ -133,6 +157,12 @@ Run one allowlisted command (e.g. 'run_tests') inside an isolated workspace.
 - Parameters:
   - `command_name`: string (one of sandbox.commands.ALLOWED_COMMANDS's keys)
   - `workspace_id`: string, optional (an already-open session from sandbox.open)
+
+## `subscriptions.list`
+
+List the user's current subscriptions - teams, topics, websites, and weather locations that Gnosis prioritizes in answers over guessing/searching.
+
+- Permission: `SAFE`
 
 ## `test.run`
 

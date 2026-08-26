@@ -85,6 +85,17 @@ def test_knowledge_tools_round_trip_through_the_real_filesystem(isolated_data_di
     assert "impermanence" in content
 
 
+def test_subscriptions_list_tool_is_wired_to_the_real_subscriptions_module(isolated_data_dir):
+    from core import subscriptions
+    assert tool_registry.get("subscriptions.list") is not None
+    subscriptions.add_subscription("team", "Manchester United", metadata={"team_id": "360", "league_slug": "eng.1"})
+
+    result = tool_registry.execute("subscriptions.list")
+
+    assert result == subscriptions.list_subscriptions()
+    assert result[0]["name"] == "Manchester United"
+
+
 def test_cron_tools_round_trip_through_the_real_cron_functions(isolated_data_dir, no_real_crontab, monkeypatch):
     """cron.add/list/run/remove wired to webagent's real cron_add/
     cron_list_entries/run_cron_task_now/cron_remove - against a faked

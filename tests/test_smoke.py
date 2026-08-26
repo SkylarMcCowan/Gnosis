@@ -40,11 +40,14 @@ def test_basic_conversation(fake_ollama_chat):
     """chat_response() is the programmatic entry point behind every UI
     (CLI loop and webagent_gui.py both funnel through it) - this exercises
     the default (non-research, non-agent) path end to end against a fake
-    model."""
+    model. Two model calls, not one: _select_tool_action's local-capability
+    check now runs on every turn (its fake, non-JSON reply is correctly
+    treated as "no tool needed" - see test_tool_actions.py), then the real
+    conversational reply streams."""
     reply = webagent.chat_response("Hello, are you there?")
     assert reply == fake_ollama_chat.reply
-    assert len(fake_ollama_chat.calls) == 1
-    assert fake_ollama_chat.calls[0]["model"] == webagent.MODELS["main"]
+    assert len(fake_ollama_chat.calls) == 2
+    assert all(call["model"] == webagent.MODELS["main"] for call in fake_ollama_chat.calls)
 
     roles = [m["role"] for m in webagent.context.assistant_convo]
     assert roles[-2:] == ["user", "assistant"]

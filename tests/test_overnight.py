@@ -1,8 +1,8 @@
 """Regression tests for Phase 16's overnight cycle (run_overnight_cycle) -
-sequences the two real pipelines that already exist (self-improve, tool
-generation) and writes one combined report. Same isolation discipline as
-test_selfimprove.py: a disposable git repo, a fake _selfimprove_coding_chat,
-never the real Gnosis checkout or a real model call.
+sequences the three real pipelines that already exist (self-improve, tool
+generation, Historian cleanup) and writes one combined report. Same
+isolation discipline as test_selfimprove.py: a disposable git repo, a fake
+_selfimprove_coding_chat, never the real Gnosis checkout or a real model call.
 """
 import os
 import subprocess
@@ -43,7 +43,7 @@ def overnight_repo(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_overnight_cycle_runs_both_pipelines_and_writes_a_combined_report(overnight_repo, monkeypatch):
+def test_overnight_cycle_runs_all_three_pipelines_and_writes_a_combined_report(overnight_repo, monkeypatch):
     monkeypatch.setattr(webagent, "_selfimprove_coding_chat", lambda system_prompt, user_prompt: None)
 
     report = webagent.run_overnight_cycle()
@@ -52,6 +52,7 @@ def test_overnight_cycle_runs_both_pipelines_and_writes_a_combined_report(overni
     assert "Overnight Learning Run #1" in report
     assert "Self-improve:" in report
     assert "Tool generation:" in report
+    assert "Historian cleanup:" in report
     assert "No change made" in report  # self-improve: no candidate, from the fake chat's None
     assert "No recurring capability gap found" in report  # tool-gen: no findings yet
     assert "relaunch `python3 webagent.py`" in report
@@ -69,6 +70,28 @@ def test_overnight_cycle_run_numbers_increment_across_calls(overnight_repo, monk
     second_report = webagent.run_overnight_cycle()
 
     assert "Overnight Learning Run #2" in second_report
+
+
+def test_overnight_cycle_runs_historian_cleanup_for_real(overnight_repo, monkeypatch):
+    """The point of scheduling this nightly is that saved conversations and
+    knowledge_base actually get cleaned up unattended - historian(dry_run=False)
+    must run for real, not just get mentioned in the report. Duplicate files
+    are placed inside a knowledge_base subfolder (not loose at the top level)
+    so this only exercises the dedup pass, not the topic-classification pass,
+    which calls a real local model and isn't what this test is about.
+    """
+    monkeypatch.setattr(webagent, "_selfimprove_coding_chat", lambda system_prompt, user_prompt: None)
+    bucket_dir = overnight_repo / "knowledge_base" / "existing_bucket"
+    bucket_dir.mkdir(parents=True)
+    (bucket_dir / "dup_a.md").write_text("duplicate content")
+    (bucket_dir / "dup_b.md").write_text("duplicate content")
+
+    report = webagent.run_overnight_cycle()
+
+    assert "Historian cleanup:" in report
+    assert "1 duplicate(s) removed" in report
+    remaining = list((overnight_repo / "knowledge_base").rglob("dup_*.md"))
+    assert len(remaining) == 1
 
 
 def test_overnight_cycle_records_experiences_for_both_pipelines(overnight_repo, monkeypatch):
