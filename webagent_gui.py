@@ -50,8 +50,11 @@ from games.zuma_endless import ZumaEndlessWidget
 from games.solitaire import SolitaireWidget
 from games.sudoku import SudokuWidget, DIFFICULTIES as SUDOKU_DIFFICULTIES
 from games.mystery import MysteryWidget
+from games.tetris import TetrisWidget
+from games.hangman import HangmanWidget, CATEGORIES as HANGMAN_CATEGORIES
 from games.idle_island import IdleIslandWidget
 from worklog import WorklogWidget
+from content_builder import LinkedInBlogBuilderWidget
 from core import subscriptions
 from core.activity_log import load_activity, clear_activity
 from memory.experience import load_experiences
@@ -606,7 +609,8 @@ class WebAgentGUI(QMainWindow):
         loses whatever progress happened since the last autosave tick."""
         for widget in (
             self.zuma_widget, self.solitaire_widget, self.sudoku_widget,
-            self.mystery_widget, self.idle_island_widget,
+            self.mystery_widget, self.tetris_widget, self.hangman_widget,
+            self.idle_island_widget,
         ):
             widget.save_now()
         super().closeEvent(event)
@@ -638,6 +642,7 @@ class WebAgentGUI(QMainWindow):
         for label in (
             "💬  Chat", "🔄  Self-Improve", "📊  Report", "📦  Proposals", "🧠  Knowledge",
             "🔔  Subscriptions", "🎮  Games", "🏝️  Idle Island", "🗂️  Work Tracker",
+            "📝  LinkedIn/Blog",
         ):
             self.nav_list.addItem(label)
         root_layout.addWidget(self.nav_list)
@@ -656,6 +661,8 @@ class WebAgentGUI(QMainWindow):
         self.pages.addWidget(self.idle_island_widget)
         self.worklog_widget = WorklogWidget()
         self.pages.addWidget(self.worklog_widget)
+        self.content_builder_widget = LinkedInBlogBuilderWidget()
+        self.pages.addWidget(self.content_builder_widget)
 
         self.nav_list.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.nav_list.setCurrentRow(0)
@@ -1316,6 +1323,48 @@ class WebAgentGUI(QMainWindow):
         mystery_row.addWidget(self.mystery_widget, 1)
         mystery_layout.addLayout(mystery_row)
         tabs.addTab(mystery_page, "Mystery")
+
+        tetris_page = QWidget()
+        tetris_layout = QVBoxLayout(tetris_page)
+        tetris_layout.addWidget(self._muted_label(
+            "Tetris - Left/Right to move, Up to rotate, Down for a soft drop, Space to hard "
+            "drop, P to pause. Clear lines to level up and speed up the fall."
+        ))
+        tetris_row = QHBoxLayout()
+        tetris_row.addStretch()
+        self.tetris_widget = TetrisWidget()
+        tetris_row.addWidget(self.tetris_widget)
+        tetris_row.addStretch()
+        tetris_layout.addLayout(tetris_row)
+        tetris_layout.addStretch()
+        tabs.addTab(tetris_page, "Tetris")
+
+        hangman_page = QWidget()
+        hangman_layout = QVBoxLayout(hangman_page)
+        hangman_layout.addWidget(self._muted_label(
+            "Hangman - type a letter to guess. Six wrong guesses and it's game over."
+        ))
+        hangman_controls = QHBoxLayout()
+        hangman_controls.addWidget(QLabel("Category:"))
+        self.hangman_category_combo = QComboBox()
+        self.hangman_category_combo.addItems(["Random"] + list(HANGMAN_CATEGORIES.keys()))
+        self.hangman_category_combo.setCurrentText("Random")
+        hangman_controls.addWidget(self.hangman_category_combo)
+        hangman_new_game_button = QPushButton("New Word")
+        hangman_new_game_button.clicked.connect(
+            lambda: self.hangman_widget._new_game(self.hangman_category_combo.currentText())
+        )
+        hangman_controls.addWidget(hangman_new_game_button)
+        hangman_controls.addStretch()
+        hangman_layout.addLayout(hangman_controls)
+        hangman_row = QHBoxLayout()
+        hangman_row.addStretch()
+        self.hangman_widget = HangmanWidget()
+        hangman_row.addWidget(self.hangman_widget)
+        hangman_row.addStretch()
+        hangman_layout.addLayout(hangman_row)
+        hangman_layout.addStretch()
+        tabs.addTab(hangman_page, "Hangman")
 
         return page
 

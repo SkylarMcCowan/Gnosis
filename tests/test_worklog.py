@@ -4,7 +4,7 @@ functions. core.config._root_override is redirected to a scratch dir by the
 autouse isolated_data_dir fixture in conftest.py, so these never touch the
 project's real worklog/ directory.
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -94,7 +94,7 @@ def test_move_task_status_clamps_at_either_end():
 
     for _ in range(len(worklog.STATUSES) + 2):
         worklog.move_task_status(task["id"], 1)
-    assert worklog.list_tasks()[0]["status"] == "Paid"
+    assert worklog.list_tasks()[0]["status"] == worklog.STATUSES[-1]
 
 
 def test_set_task_hours_updates_value():
@@ -227,6 +227,208 @@ def test_delete_event_removes_it():
     assert worklog.list_events() == []
 
 
+def test_update_event_edits_fields_in_place():
+    event = worklog.add_event("Standup", "2026-08-26", "9:00 AM", "Daily sync")
+    updated = worklog.update_event(event["id"], "Standup (moved)", "2026-08-27", "10:00 AM", "Daily sync, later")
+    assert updated["title"] == "Standup (moved)"
+    assert updated["date"] == "2026-08-27"
+    assert updated["time"] == "10:00 AM"
+    assert updated["description"] == "Daily sync, later"
+    assert worklog.list_events() == [updated]
+    assert worklog.events_on_date("2026-08-26") == []
+    assert worklog.events_on_date("2026-08-27") == [updated]
+
+
+def test_update_event_requires_title_date_and_an_existing_event():
+    event = worklog.add_event("Standup", "2026-08-26")
+    with pytest.raises(ValueError):
+        worklog.update_event(event["id"], "", "2026-08-26")
+    with pytest.raises(ValueError):
+        worklog.update_event(event["id"], "Standup", "")
+    with pytest.raises(ValueError):
+        worklog.update_event("missing-id", "Standup", "2026-08-26")
+
+
+def test_add_event_accepts_an_optional_job_code():
+    worklog.add_project("Proj", "P1")
+    event = worklog.add_event("Site visit", "2026-08-26", project_code="P1")
+    assert event["project_code"] == "P1"
+
+    # blank is fine - a job code is optional, unlike on a task
+    untagged = worklog.add_event("Personal reminder", "2026-08-26")
+    assert untagged["project_code"] == ""
+
+
+def test_add_event_rejects_an_unknown_job_code():
+    with pytest.raises(ValueError):
+        worklog.add_event("Site visit", "2026-08-26", project_code="NOPE")
+
+
+def test_update_event_can_set_clear_or_reject_the_job_code():
+    worklog.add_project("Proj", "P1")
+    event = worklog.add_event("Site visit", "2026-08-26")
+    assert event["project_code"] == ""
+
+    tagged = worklog.update_event(event["id"], "Site visit", "2026-08-26", project_code="P1")
+    assert tagged["project_code"] == "P1"
+
+    cleared = worklog.update_event(event["id"], "Site visit", "2026-08-26", project_code="")
+    assert cleared["project_code"] == ""
+
+    with pytest.raises(ValueError):
+        worklog.update_event(event["id"], "Site visit", "2026-08-26", project_code="NOPE")
+
+
+def test_load_data_backfills_project_code_on_events_missing_it():
+    # events created before the job-code field existed shouldn't KeyError
+    event = worklog.add_event("Legacy event", "2026-08-26")
+    data = worklog.load_data()
+    del data["events"][0]["project_code"]
+    worklog.save_data(data)
+
+    reloaded = worklog.list_events()
+    assert reloaded[0]["project_code"] == ""
+
+
+def test_sync_recurring_events_tags_the_generated_calendar_event_with_the_rules_job_code():
+    worklog.add_project("Proj", "P1")
+    today = date.today()
+    worklog.add_recurring_event("Weekly chore", today.weekday(), "P1")
+    worklog.sync_recurring_events(today.isoformat())
+
+    events = worklog.events_on_date(today.isoformat())
+    assert len(events) == 1
+    assert events[0]["project_code"] == "P1"
+
+
+def test_add_recurring_event_requires_title_valid_weekday_and_existing_project():
+    worklog.add_project("Proj", "P1")
+    with pytest.raises(ValueError):
+        worklog.add_recurring_event("", 0, "P1")
+    with pytest.raises(ValueError):
+        worklog.add_recurring_event("Chore", 7, "P1")
+    with pytest.raises(ValueError):
+        worklog.add_recurring_event("Chore", -1, "P1")
+    with pytest.raises(ValueError):
+        worklog.add_recurring_event("Chore", 0, "NOPE")
+
+
+def test_set_recurring_event_active_requires_an_existing_rule():
+    with pytest.raises(ValueError):
+        worklog.set_recurring_event_active("missing-id", False)
+
+
+def test_sync_recurring_events_generates_todays_occurrence_immediately():
+    worklog.add_project("Proj", "P1")
+    today = date.today()
+    worklog.add_recurring_event("Take out trash", today.weekday(), "P1", hours=0.5)
+
+    created = worklog.sync_recurring_events(today.isoformat())
+    assert len(created) == 1
+    assert created[0]["title"] == "Take out trash"
+    assert created[0]["recurring_date"] == today.isoformat()
+    assert created[0]["hours"] == 0.5
+    assert created[0]["recurring_event_id"] == worklog.list_recurring_events()[0]["id"]
+
+    events = worklog.events_on_date(today.isoformat())
+    assert len(events) == 1
+    assert events[0]["title"] == "Take out trash"
+
+    # calling sync again the same day is a no-op, not a duplicate
+    assert worklog.sync_recurring_events(today.isoformat()) == []
+    assert len(worklog.list_tasks()) == 1
+
+
+def test_sync_recurring_events_waits_for_the_next_occurrence_if_not_today():
+    worklog.add_project("Proj", "P1")
+    today = date.today()
+    tomorrow_weekday = (today.weekday() + 1) % 7
+    worklog.add_recurring_event("Weekly chore", tomorrow_weekday, "P1")
+
+    assert worklog.sync_recurring_events(today.isoformat()) == []
+    assert worklog.list_tasks() == []
+
+    tomorrow = today + timedelta(days=1)
+    created = worklog.sync_recurring_events(tomorrow.isoformat())
+    assert len(created) == 1
+    assert created[0]["recurring_date"] == tomorrow.isoformat()
+
+
+def test_sync_recurring_events_backfills_every_missed_week_without_dropping_any():
+    worklog.add_project("Proj", "P1")
+    today = date.today()
+    worklog.add_recurring_event("Weekly chore", today.weekday(), "P1")
+    worklog.sync_recurring_events(today.isoformat())
+    assert len(worklog.list_tasks()) == 1
+
+    three_weeks_later = today + timedelta(weeks=3)
+    created = worklog.sync_recurring_events(three_weeks_later.isoformat())
+    assert len(created) == 3
+    expected_dates = {(today + timedelta(weeks=i)).isoformat() for i in (1, 2, 3)}
+    assert {t["recurring_date"] for t in created} == expected_dates
+    assert len(worklog.list_tasks()) == 4
+
+
+def test_sync_recurring_events_skips_paused_rules():
+    worklog.add_project("Proj", "P1")
+    today = date.today()
+    rule = worklog.add_recurring_event("Weekly chore", today.weekday(), "P1")
+    worklog.set_recurring_event_active(rule["id"], False)
+
+    assert worklog.sync_recurring_events(today.isoformat()) == []
+    assert worklog.list_tasks() == []
+
+
+def test_update_recurring_event_edits_fields_but_preserves_active_and_watermark():
+    worklog.add_project("Proj", "P1")
+    worklog.add_project("Other", "P2")
+    today = date.today()
+    rule = worklog.add_recurring_event("Weekly chore", today.weekday(), "P1", hours=1.0)
+    worklog.sync_recurring_events(today.isoformat())  # sets last_generated_date, so it's not None below
+    worklog.set_recurring_event_active(rule["id"], False)
+
+    new_weekday = (today.weekday() + 2) % 7
+    updated = worklog.update_recurring_event(
+        rule["id"], "Renamed chore", new_weekday, "P2", 2.5, "5:00 PM", "New description",
+    )
+    assert updated["title"] == "Renamed chore"
+    assert updated["weekday"] == new_weekday
+    assert updated["project_code"] == "P2"
+    assert updated["hours"] == 2.5
+    assert updated["time"] == "5:00 PM"
+    assert updated["description"] == "New description"
+    # untouched by the edit
+    assert updated["active"] is False
+    assert updated["last_generated_date"] == today.isoformat()
+    assert updated["id"] == rule["id"]
+
+
+def test_update_recurring_event_requires_title_valid_weekday_existing_project_and_rule():
+    worklog.add_project("Proj", "P1")
+    rule = worklog.add_recurring_event("Weekly chore", 0, "P1")
+    with pytest.raises(ValueError):
+        worklog.update_recurring_event(rule["id"], "", 0, "P1")
+    with pytest.raises(ValueError):
+        worklog.update_recurring_event(rule["id"], "Chore", 7, "P1")
+    with pytest.raises(ValueError):
+        worklog.update_recurring_event(rule["id"], "Chore", 0, "NOPE")
+    with pytest.raises(ValueError):
+        worklog.update_recurring_event("missing-id", "Chore", 0, "P1")
+
+
+def test_delete_recurring_event_removes_the_rule_but_keeps_generated_tasks():
+    worklog.add_project("Proj", "P1")
+    today = date.today()
+    rule = worklog.add_recurring_event("Weekly chore", today.weekday(), "P1")
+    worklog.sync_recurring_events(today.isoformat())
+    assert len(worklog.list_tasks()) == 1
+
+    assert worklog.delete_recurring_event("missing-id") is False
+    assert worklog.delete_recurring_event(rule["id"]) is True
+    assert worklog.list_recurring_events() == []
+    assert len(worklog.list_tasks()) == 1
+
+
 def test_log_task_hours_sets_and_clears_a_day():
     worklog.add_project("Proj", "P1")
     task = worklog.add_task("Multi-day work", "P1")
@@ -330,18 +532,6 @@ def test_daily_summary_only_counts_tasks_marked_done_that_day(monkeypatch):
     assert summary["total_hours"] == 3.0
 
 
-def test_daily_summary_still_counts_a_task_after_it_moves_to_paid():
-    worklog.add_project("Proj", "P1")
-    task = worklog.add_task("Invoice this", "P1", hours=5.0)
-    for _ in range(5):  # all the way to Paid
-        worklog.move_task_status(task["id"], 1)
-    assert worklog.list_tasks()[0]["status"] == "Paid"
-
-    today = date.today().isoformat()
-    summary = worklog.daily_summary(today)
-    assert summary["total_hours"] == 5.0
-
-
 def test_weekly_summary_aggregates_across_the_week():
     worklog.add_project("Proj", "P1")
     task = worklog.add_task("Weekly work", "P1", hours=8.0)
@@ -359,3 +549,47 @@ def test_week_start_for_returns_the_preceding_monday():
     a_wednesday = "2026-08-26"
     assert date.fromisoformat(a_wednesday).weekday() == 2
     assert worklog.week_start_for(a_wednesday) == "2026-08-24"
+
+
+def test_tasks_for_day_rolls_forward_not_done_tasks_to_every_day():
+    worklog.add_project("Proj", "P1")
+    task = worklog.add_task("Still open", "P1")
+    worklog.move_task_status(task["id"], 1)  # New -> Working, not Done
+
+    yesterday = date.today() - timedelta(days=1)
+    tomorrow = date.today() + timedelta(days=1)
+    for day in (yesterday, date.today(), tomorrow):
+        ids = [t["id"] for t in worklog.tasks_for_day(day)]
+        assert task["id"] in ids
+
+
+def test_tasks_for_day_only_shows_a_done_task_on_the_day_it_was_completed():
+    worklog.add_project("Proj", "P1")
+    task = worklog.add_task("Wrap it up", "P1")
+    for _ in range(4):  # New -> Working -> Hold -> Review -> Done
+        worklog.move_task_status(task["id"], 1)
+
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    tomorrow = today + timedelta(days=1)
+    assert task["id"] in [t["id"] for t in worklog.tasks_for_day(today)]
+    assert task["id"] not in [t["id"] for t in worklog.tasks_for_day(yesterday)]
+    assert task["id"] not in [t["id"] for t in worklog.tasks_for_day(tomorrow)]
+
+
+def test_move_task_status_can_backdate_the_transition():
+    worklog.add_project("Proj", "P1")
+    task = worklog.add_task("Forgot to close this out", "P1", hours=3.0)
+    yesterday = date.today() - timedelta(days=1)
+    backdated_at = datetime(yesterday.year, yesterday.month, yesterday.day, 12, 0)
+
+    for _ in range(4):
+        worklog.move_task_status(task["id"], 1, at=backdated_at)
+    updated = worklog.list_tasks()[0]
+    assert updated["status"] == "Done"
+    assert updated["status_history"][-1]["at"] == backdated_at.isoformat()
+
+    # shows up on yesterday's board, not today's, and still counts in reports
+    assert task["id"] in [t["id"] for t in worklog.tasks_for_day(yesterday)]
+    assert task["id"] not in [t["id"] for t in worklog.tasks_for_day(date.today())]
+    assert worklog.daily_summary(yesterday.isoformat())["total_hours"] == 3.0

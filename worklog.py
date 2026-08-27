@@ -10,6 +10,9 @@ Qt layer below it as a thin UI over that state. All data lives in one JSON
 file (projects/tasks/events) under core_config.path("worklog") - same
 lazy-mkdir-on-write-only discipline as core/activity_log.py and
 core/subscriptions.py: a read must never create the directory.
+
+The pipeline is New -> Working -> Hold/Review -> Done. Done is terminal -
+tasks stay on the board (and count toward reports) until manually deleted.
 """
 import html
 import json
@@ -17,7 +20,7 @@ import os
 import uuid
 from datetime import date, datetime, timedelta
 
-from PyQt6.QtCore import QDate, Qt, QTimer
+from PyQt6.QtCore import QDate, QTime, Qt, QTimer
 from PyQt6.QtGui import QColor, QTextCharFormat
 from PyQt6.QtWidgets import (
     QCalendarWidget, QComboBox, QDateEdit, QDialog, QDoubleSpinBox, QFrame, QHBoxLayout,
@@ -26,12 +29,14 @@ from PyQt6.QtWidgets import (
 )
 
 from core import config as core_config
+import worklog_audio
 
-STATUSES = ("New", "Working", "Hold", "Review", "Done", "Paid")
+STATUSES = ("New", "Working", "Hold", "Review", "Done")
 STATUS_COLORS = {
     "New": "#4c8bf5", "Working": "#f5a524", "Hold": "#e5484d",
-    "Review": "#a855f7", "Done": "#3ecf8e", "Paid": "#eab308",
+    "Review": "#a855f7", "Done": "#3ecf8e",
 }
+WEEKDAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 COLUMN_EXPANDED_WIDTH = 190
 COLUMN_COLLAPSED_WIDTH = 60
 
@@ -102,20 +107,23 @@ def _new_id():
 def load_data():
     path = _data_path()
     if not os.path.isfile(path):
-        return {"projects": [], "tasks": [], "events": []}
+        return {"projects": [], "tasks": [], "events": [], "recurring_events": []}
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, ValueError):
-        return {"projects": [], "tasks": [], "events": []}
+        return {"projects": [], "tasks": [], "events": [], "recurring_events": []}
     if not isinstance(data, dict):
-        return {"projects": [], "tasks": [], "events": []}
+        return {"projects": [], "tasks": [], "events": [], "recurring_events": []}
     data.setdefault("projects", [])
     data.setdefault("tasks", [])
     data.setdefault("events", [])
+    data.setdefault("recurring_events", [])
     for task in data["tasks"]:
         task.setdefault("notes", [])
         task.setdefault("daily_hours", {})
+    for event in data["events"]:
+        event.setdefault("project_code", "")
     return data
 
 
@@ -227,7 +235,10 @@ def add_task(title, project_code, hours=0.0):
     return record
 
 
-def set_task_status(task_id, new_status):
+def set_task_status(task_id, new_status, at=None):
+    """at overrides the status_history timestamp (defaults to now) - lets
+    the board backdate a status change to a previously-viewed day, e.g.
+    marking a task Done "for yesterday" after forgetting to at the time."""
     if new_status not in STATUSES:
         raise ValueError(f'Unknown status "{new_status}".')
     data = load_data()
@@ -235,12 +246,12 @@ def set_task_status(task_id, new_status):
     if task is None:
         raise ValueError(f'No task with id "{task_id}".')
     task["status"] = new_status
-    task["status_history"].append({"status": new_status, "at": datetime.now().isoformat()})
+    task["status_history"].append({"status": new_status, "at": (at or datetime.now()).isoformat()})
     save_data(data)
     return task
 
 
-def move_task_status(task_id, direction):
+def move_task_status(task_id, direction, at=None):
     """direction is +1 (slide right/forward) or -1 (slide left/back) - a
     no-op at either end of STATUSES rather than wrapping or erroring, so the
     UI can just disable the outermost arrow buttons instead of guarding
@@ -253,7 +264,7 @@ def move_task_status(task_id, direction):
     new_index = max(0, min(len(STATUSES) - 1, index + direction))
     if new_index == index:
         return task
-    return set_task_status(task_id, STATUSES[new_index])
+    return set_task_status(task_id, STATUSES[new_index], at=at)
 
 
 def set_task_hours(task_id, hours):
@@ -425,21 +436,46 @@ def events_on_date(iso_date):
     return [e for e in list_events() if e["date"] == iso_date]
 
 
-def add_event(title, iso_date, time_str="", description=""):
+def add_event(title, iso_date, time_str="", description="", project_code=""):
     title = (title or "").strip()
     if not title:
         raise ValueError("An event needs a title.")
     if not iso_date:
         raise ValueError("An event needs a date.")
+    project_code = (project_code or "").strip()
+    if project_code and get_project(project_code) is None:
+        raise ValueError(f'No project with code "{project_code}".')
     record = {
         "id": _new_id(), "title": title, "date": iso_date,
         "time": (time_str or "").strip(), "description": (description or "").strip(),
-        "created_at": datetime.now().isoformat(),
+        "project_code": project_code, "created_at": datetime.now().isoformat(),
     }
     data = load_data()
     data["events"].append(record)
     save_data(data)
     return record
+
+
+def update_event(event_id, title, iso_date, time_str="", description="", project_code=""):
+    title = (title or "").strip()
+    if not title:
+        raise ValueError("An event needs a title.")
+    if not iso_date:
+        raise ValueError("An event needs a date.")
+    project_code = (project_code or "").strip()
+    if project_code and get_project(project_code) is None:
+        raise ValueError(f'No project with code "{project_code}".')
+    data = load_data()
+    event = next((e for e in data["events"] if e["id"] == event_id), None)
+    if event is None:
+        raise ValueError(f'No event with id "{event_id}".')
+    event["title"] = title
+    event["date"] = iso_date
+    event["time"] = (time_str or "").strip()
+    event["description"] = (description or "").strip()
+    event["project_code"] = project_code
+    save_data(data)
+    return event
 
 
 def delete_event(event_id):
@@ -453,13 +489,155 @@ def delete_event(event_id):
 
 
 # ----------------------------------------------------------------------
+# Recurring events - a rule ("Trash day", every Monday, against a project)
+# that sync_recurring_events() expands into real Tasks + calendar Events
+# as each week's occurrence comes due, instead of the user re-entering the
+# same chore by hand every week.
+# ----------------------------------------------------------------------
+def list_recurring_events():
+    return load_data()["recurring_events"]
+
+
+def add_recurring_event(title, weekday, project_code, hours=0.0, time_str="", description=""):
+    title = (title or "").strip()
+    if not title:
+        raise ValueError("A recurring event needs a title.")
+    if weekday not in range(7):
+        raise ValueError("Weekday must be 0 (Monday) through 6 (Sunday).")
+    if get_project(project_code) is None:
+        raise ValueError(f'No project with code "{project_code}".')
+    record = {
+        "id": _new_id(), "title": title, "weekday": weekday, "project_code": project_code,
+        "hours": float(hours or 0.0), "time": (time_str or "").strip(),
+        "description": (description or "").strip(), "active": True,
+        "created_at": datetime.now().isoformat(), "last_generated_date": None,
+    }
+    data = load_data()
+    data["recurring_events"].append(record)
+    save_data(data)
+    return record
+
+
+def update_recurring_event(rule_id, title, weekday, project_code, hours=0.0, time_str="", description=""):
+    """Edits every user-editable field of a rule in place - active state
+    and last_generated_date are left untouched, so fixing a typo doesn't
+    reset which occurrences it's already caught up on. Changing the
+    weekday does shift what counts as "caught up" though: the next sync
+    resumes from the same watermark but against the new day, so a switch
+    from Monday to Wednesday backfills the Wednesdays missed since the
+    last generated date rather than silently skipping to today's."""
+    title = (title or "").strip()
+    if not title:
+        raise ValueError("A recurring event needs a title.")
+    if weekday not in range(7):
+        raise ValueError("Weekday must be 0 (Monday) through 6 (Sunday).")
+    if get_project(project_code) is None:
+        raise ValueError(f'No project with code "{project_code}".')
+    data = load_data()
+    rule = next((r for r in data["recurring_events"] if r["id"] == rule_id), None)
+    if rule is None:
+        raise ValueError(f'No recurring event with id "{rule_id}".')
+    rule["title"] = title
+    rule["weekday"] = weekday
+    rule["project_code"] = project_code
+    rule["hours"] = float(hours or 0.0)
+    rule["time"] = (time_str or "").strip()
+    rule["description"] = (description or "").strip()
+    save_data(data)
+    return rule
+
+
+def set_recurring_event_active(rule_id, active):
+    data = load_data()
+    rule = next((r for r in data["recurring_events"] if r["id"] == rule_id), None)
+    if rule is None:
+        raise ValueError(f'No recurring event with id "{rule_id}".')
+    rule["active"] = bool(active)
+    save_data(data)
+    return rule
+
+
+def delete_recurring_event(rule_id):
+    data = load_data()
+    remaining = [r for r in data["recurring_events"] if r["id"] != rule_id]
+    if len(remaining) == len(data["recurring_events"]):
+        return False
+    data["recurring_events"] = remaining
+    save_data(data)
+    return True
+
+
+def _next_weekday_on_or_after(d, weekday):
+    return d + timedelta(days=(weekday - d.weekday()) % 7)
+
+
+def _weekly_occurrences(after_date, through_date, weekday):
+    """Every date > after_date and <= through_date that falls on weekday,
+    oldest first. Empty once after_date has caught up to through_date, so
+    calling this again the same day is a no-op rather than a duplicate."""
+    if after_date >= through_date:
+        return []
+    occurrences = []
+    candidate = _next_weekday_on_or_after(after_date + timedelta(days=1), weekday)
+    while candidate <= through_date:
+        occurrences.append(candidate)
+        candidate += timedelta(days=7)
+    return occurrences
+
+
+def sync_recurring_events(today_iso=None):
+    """Catches every active rule up to `today` (defaults to date.today()):
+    for each weekly occurrence since the rule's last-generated date (or
+    its creation date, for a brand-new rule that hasn't generated
+    anything yet) through today, creates both a Task against the rule's
+    project and a same-day calendar Event, then advances the rule's
+    watermark. Safe to call on every app/tab open - a date already
+    generated for a rule is never regenerated, and a gap where the app
+    was closed backfills every missed occurrence instead of dropping any
+    of them silently."""
+    today = date.fromisoformat(today_iso) if today_iso else date.today()
+    data = load_data()
+    created_tasks = []
+    for rule in data["recurring_events"]:
+        if not rule.get("active", True):
+            continue
+        if rule.get("last_generated_date"):
+            after = date.fromisoformat(rule["last_generated_date"])
+        else:
+            after = date.fromisoformat(rule["created_at"][:10]) - timedelta(days=1)
+        occurrences = _weekly_occurrences(after, today, rule["weekday"])
+        if not occurrences:
+            continue
+        for occ_date in occurrences:
+            iso_date = occ_date.isoformat()
+            now = datetime.now().isoformat()
+            task = {
+                "id": _new_id(), "title": rule["title"], "project_code": rule["project_code"],
+                "status": STATUSES[0], "hours": rule.get("hours", 0.0),
+                "status_history": [{"status": STATUSES[0], "at": now}],
+                "created_at": now, "notes": [], "daily_hours": {},
+                "recurring_event_id": rule["id"], "recurring_date": iso_date,
+            }
+            data["tasks"].append(task)
+            created_tasks.append(task)
+            data["events"].append({
+                "id": _new_id(), "title": rule["title"], "date": iso_date,
+                "time": rule.get("time", ""), "description": rule.get("description", ""),
+                "project_code": rule["project_code"],
+                "created_at": now, "recurring_event_id": rule["id"],
+            })
+        rule["last_generated_date"] = occurrences[-1].isoformat()
+    if created_tasks:
+        save_data(data)
+    return created_tasks
+
+
+# ----------------------------------------------------------------------
 # Reporting
 # ----------------------------------------------------------------------
 def _last_completed_date(task):
     """The date a task counts toward for daily/weekly hour reports - the
-    most recent time it entered "Done", regardless of whether it has since
-    moved on to "Paid". Paid is a payroll bookkeeping status, not a second
-    unit of work, so it must never introduce a second reporting date."""
+    most recent time it entered "Done" (the terminal status)."""
     completed_at = None
     for entry in task["status_history"]:
         if entry["status"] == "Done":
@@ -467,6 +645,25 @@ def _last_completed_date(task):
     if completed_at is None:
         return None
     return datetime.fromisoformat(completed_at).date()
+
+
+def tasks_for_day(target_date):
+    """Tasks to show on the Todo board for target_date - a calendar-style
+    day view: a task that isn't Done rolls forward and keeps showing up on
+    every day (past, today, or a future day you're previewing) until it's
+    completed, so nothing gets lost if you forget to mark it done at the
+    time - you can navigate back to that day and finish it there, backdated
+    (see set_task_status's `at`). A Done task shows only on the specific day
+    it was completed, then rolls off the board from the next day on - report
+    totals are untouched either way, since daily_summary/weekly_summary read
+    status_history directly rather than this filter."""
+    visible = []
+    for task in list_tasks():
+        if task["status"] != "Done":
+            visible.append(task)
+        elif _last_completed_date(task) == target_date:
+            visible.append(task)
+    return visible
 
 
 def daily_summary(iso_date):
@@ -530,6 +727,7 @@ class WorklogWidget(QWidget):
         self.tabs = QTabWidget()
         outer.addWidget(self.tabs, 1)
 
+        self.todo_selected_date = date.today()
         self.todo_tab = self._build_todo_tab()
         self.focus_tab = self._build_focus_tab()
         self.calendar_tab = self._build_calendar_tab()
@@ -542,6 +740,7 @@ class WorklogWidget(QWidget):
         self.tabs.addTab(self.reports_tab, "Reports")
         self.tabs.currentChanged.connect(self._on_tab_changed)
 
+        sync_recurring_events()
         self._rebuild_todo()
         self._refresh_focus_tasks()
         self._refresh_calendar_events()
@@ -551,10 +750,12 @@ class WorklogWidget(QWidget):
     def _on_tab_changed(self, index):
         widget = self.tabs.widget(index)
         if widget is self.todo_tab:
+            sync_recurring_events()
             self._rebuild_todo()
         elif widget is self.focus_tab:
             self._refresh_focus_tasks()
         elif widget is self.calendar_tab:
+            sync_recurring_events()
             self._refresh_calendar_events()
         elif widget is self.projects_tab:
             self._rebuild_projects()
@@ -573,6 +774,27 @@ class WorklogWidget(QWidget):
         new_task_button.clicked.connect(self._new_task_clicked)
         top_row.addWidget(new_task_button)
         top_row.addStretch()
+
+        prev_day_button = QPushButton("◀")
+        prev_day_button.setFixedWidth(28)
+        prev_day_button.setToolTip("Previous day")
+        prev_day_button.clicked.connect(lambda: self._todo_shift_day(-1))
+        top_row.addWidget(prev_day_button)
+
+        self.todo_date_label = QLabel()
+        self.todo_date_label.setStyleSheet(f"color: {TEXT_PRIMARY}; font-weight: bold; min-width: 130px;")
+        self.todo_date_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        top_row.addWidget(self.todo_date_label)
+
+        next_day_button = QPushButton("▶")
+        next_day_button.setFixedWidth(28)
+        next_day_button.setToolTip("Next day")
+        next_day_button.clicked.connect(lambda: self._todo_shift_day(1))
+        top_row.addWidget(next_day_button)
+
+        today_button = QPushButton("Today")
+        today_button.clicked.connect(self._todo_go_today)
+        top_row.addWidget(today_button)
         outer.addLayout(top_row)
 
         board_scroll = QScrollArea()
@@ -628,15 +850,31 @@ class WorklogWidget(QWidget):
         return page
 
     def _rebuild_todo(self):
+        today = date.today()
+        if self.todo_selected_date == today:
+            self.todo_date_label.setText("Today")
+        elif self.todo_selected_date == today - timedelta(days=1):
+            self.todo_date_label.setText("Yesterday")
+        else:
+            self.todo_date_label.setText(self.todo_selected_date.strftime("%a, %b %d"))
+
         for status in STATUSES:
             self._clear_layout(self.status_columns[status]["layout"])
         counts = {status: 0 for status in STATUSES}
-        for task in list_tasks():
+        for task in tasks_for_day(self.todo_selected_date):
             counts[task["status"]] += 1
             self.status_columns[task["status"]]["layout"].addWidget(self._build_task_card(task))
         for status in STATUSES:
             self.status_columns[status]["layout"].addStretch()
             self.status_columns[status]["header"].setText(f"{status} ({counts[status]})")
+
+    def _todo_shift_day(self, delta):
+        self.todo_selected_date += timedelta(days=delta)
+        self._rebuild_todo()
+
+    def _todo_go_today(self):
+        self.todo_selected_date = date.today()
+        self._rebuild_todo()
 
     def _toggle_column_collapsed(self, status):
         col = self.status_columns[status]
@@ -677,13 +915,15 @@ class WorklogWidget(QWidget):
         project_label.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 11px;")
         layout.addWidget(project_label)
 
-        today_hours = task.get("daily_hours", {}).get(date.today().isoformat(), 0.0)
+        selected_date = self.todo_selected_date
+        selected_hours = task.get("daily_hours", {}).get(selected_date.isoformat(), 0.0)
+        selected_label_text = "Today:" if selected_date == date.today() else f"{selected_date.strftime('%b %d')}:"
 
         hours_row = QHBoxLayout()
-        hours_row.addWidget(QLabel("Today:"))
-        today_value_label = QLabel(f"{today_hours:.2f}")
-        today_value_label.setStyleSheet(f"color: {TEXT_PRIMARY}; font-weight: bold;")
-        hours_row.addWidget(today_value_label)
+        hours_row.addWidget(QLabel(selected_label_text))
+        selected_value_label = QLabel(f"{selected_hours:.2f}")
+        selected_value_label.setStyleSheet(f"color: {TEXT_PRIMARY}; font-weight: bold;")
+        hours_row.addWidget(selected_value_label)
         hours_row.addSpacing(12)
         hours_row.addWidget(QLabel("Total:"))
         total_value_label = QLabel(f"{total_task_hours(task):.2f}")
@@ -694,7 +934,8 @@ class WorklogWidget(QWidget):
         log_hours_button.setToolTip("Log or edit hours for a specific day")
         log_hours_button.setFixedWidth(24)
         log_hours_button.clicked.connect(
-            lambda checked=False, task_id=task["id"], title=task["title"]: self._log_hours_clicked(task_id, title)
+            lambda checked=False, task_id=task["id"], title=task["title"], default_date=selected_date:
+                self._log_hours_clicked(task_id, title, default_date)
         )
         hours_row.addWidget(log_hours_button)
         layout.addLayout(hours_row)
@@ -786,7 +1027,7 @@ class WorklogWidget(QWidget):
         layout.addWidget(close_button)
         dialog.exec()
 
-    def _log_hours_clicked(self, task_id, title):
+    def _log_hours_clicked(self, task_id, title, default_date=None):
         dialog = QDialog(self)
         dialog.setWindowTitle(f"Log Hours — {title}")
         dialog.resize(360, 340)
@@ -809,7 +1050,8 @@ class WorklogWidget(QWidget):
 
         date_row = QHBoxLayout()
         date_row.addWidget(QLabel("Date:"))
-        date_edit = QDateEdit(QDate.currentDate())
+        initial_qdate = QDate(default_date.year, default_date.month, default_date.day) if default_date else QDate.currentDate()
+        date_edit = QDateEdit(initial_qdate)
         date_edit.setCalendarPopup(True)
         date_row.addWidget(date_edit)
         layout.addLayout(date_row)
@@ -932,7 +1174,13 @@ class WorklogWidget(QWidget):
         self._rebuild_todo()
 
     def _slide_task(self, task_id, direction):
-        move_task_status(task_id, direction)
+        at = None
+        if self.todo_selected_date != date.today():
+            at = datetime(
+                self.todo_selected_date.year, self.todo_selected_date.month,
+                self.todo_selected_date.day, 12, 0,
+            )
+        move_task_status(task_id, direction, at=at)
         self._rebuild_todo()
 
     def _delete_task_clicked(self, task_id, title):
@@ -1012,6 +1260,12 @@ class WorklogWidget(QWidget):
         skip_button.setStyleSheet(FOCUS_PIXEL_BUTTON_QSS)
         skip_button.clicked.connect(self._focus_skip_clicked)
         controls_row.addWidget(skip_button)
+        self.focus_mute_button = QPushButton("🔊")
+        self.focus_mute_button.setToolTip("Mute the breeze and bell")
+        self.focus_mute_button.setFixedWidth(48)
+        self.focus_mute_button.setStyleSheet(FOCUS_PIXEL_BUTTON_QSS)
+        self.focus_mute_button.clicked.connect(self._focus_mute_clicked)
+        controls_row.addWidget(self.focus_mute_button)
         controls_row.addStretch()
         outer.addLayout(controls_row)
 
@@ -1059,6 +1313,7 @@ class WorklogWidget(QWidget):
         self._focus_completed_today = 0
         self._focus_running = False
         self._focus_remaining = self.focus_work_spin.value() * 60
+        self._focus_sound = worklog_audio.SoundPlayer()
         self._focus_timer = QTimer(self)
         self._focus_timer.setInterval(1000)
         self._focus_timer.timeout.connect(self._focus_tick)
@@ -1073,7 +1328,7 @@ class WorklogWidget(QWidget):
         self.focus_task_combo.addItem("(none — just time it)", None)
         restore_index = 0
         for task in list_tasks():
-            if task["status"] == "Paid":
+            if task["status"] == "Done":
                 continue
             project = get_project(task["project_code"])
             project_label = project["code"] if project else task["project_code"]
@@ -1107,6 +1362,21 @@ class WorklogWidget(QWidget):
         self._focus_remaining = self._focus_phase_seconds(self._focus_phase)
         self._focus_refresh_display()
 
+    def _focus_mute_clicked(self):
+        self._focus_sound.enabled = not self._focus_sound.enabled
+        if not self._focus_sound.enabled:
+            self._focus_sound.stop_all()
+        self.focus_mute_button.setText("🔊" if self._focus_sound.enabled else "🔇")
+
+    def _focus_sync_ambient(self):
+        """The beach breeze plays for exactly as long as a break's
+        countdown is actively running - not during work, and not while
+        paused - so it reads as the sound of the calm period itself."""
+        if self._focus_running and self._focus_phase == "break":
+            self._focus_sound.start_loop("breeze")
+        else:
+            self._focus_sound.stop_loop("breeze")
+
     def _focus_start_pause_clicked(self):
         if self._focus_running:
             self._focus_timer.stop()
@@ -1117,18 +1387,21 @@ class WorklogWidget(QWidget):
             self._focus_timer.start()
             self._focus_running = True
         self._focus_refresh_display()
+        self._focus_sync_ambient()
 
     def _focus_reset_clicked(self):
         self._focus_timer.stop()
         self._focus_running = False
         self._focus_remaining = self._focus_phase_seconds(self._focus_phase)
         self._focus_refresh_display()
+        self._focus_sync_ambient()
 
     def _focus_skip_clicked(self):
         self._focus_timer.stop()
         self._focus_running = False
         self._focus_advance_phase()
         self._focus_refresh_display()
+        self._focus_sync_ambient()
 
     def _focus_tick(self):
         self._focus_remaining -= 1
@@ -1141,11 +1414,13 @@ class WorklogWidget(QWidget):
 
     def _focus_phase_finished(self):
         finished_phase = self._focus_phase
+        self._focus_sound.play_once("bell")
         if finished_phase == "work":
             self._focus_completed_today += 1
             self._focus_log_hours_if_selected()
         self._focus_advance_phase()
         self._focus_refresh_display()
+        self._focus_sync_ambient()
         finished_label, _ = FOCUS_PHASE_INFO[finished_phase]
         next_label, _ = FOCUS_PHASE_INFO[self._focus_phase]
         QMessageBox.information(self, "Focus Timer", f"{finished_label} done! Next up: {next_label}.")
@@ -1184,9 +1459,15 @@ class WorklogWidget(QWidget):
         self.calendar_date_label = QLabel("")
         self.calendar_date_label.setStyleSheet(f"color: {TEXT_PRIMARY}; font-weight: bold;")
         side.addWidget(self.calendar_date_label)
+        event_buttons_row = QHBoxLayout()
         add_event_button = QPushButton("+ Add Event")
         add_event_button.clicked.connect(self._add_event_clicked)
-        side.addWidget(add_event_button)
+        event_buttons_row.addWidget(add_event_button)
+        recurring_button = QPushButton("🔁 Recurring")
+        recurring_button.setToolTip("Manage weekly chores that auto-create tasks")
+        recurring_button.clicked.connect(self._manage_recurring_events_clicked)
+        event_buttons_row.addWidget(recurring_button)
+        side.addLayout(event_buttons_row)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -1268,10 +1549,22 @@ class WorklogWidget(QWidget):
         title_label.setWordWrap(True)
         title_label.setStyleSheet(f"color: {TEXT_PRIMARY}; font-weight: bold;")
         header_row.addWidget(title_label, 1)
+        edit_button = QPushButton("✎")
+        edit_button.setToolTip("Edit event")
+        edit_button.clicked.connect(lambda checked=False, event_id=event["id"]: self._edit_event_clicked(event_id))
+        header_row.addWidget(edit_button)
         delete_button = QPushButton("✕")
         delete_button.clicked.connect(lambda checked=False, event_id=event["id"]: self._delete_event_clicked(event_id))
         header_row.addWidget(delete_button)
         layout.addLayout(header_row)
+
+        if event.get("project_code"):
+            project = get_project(event["project_code"])
+            project_text = f'{event["project_code"]} — {project["name"]}' if project else f'{event["project_code"]} (deleted)'
+            project_label = QLabel(html.escape(project_text))
+            project_label.setWordWrap(True)
+            project_label.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 11px;")
+            layout.addWidget(project_label)
 
         if event["description"]:
             description_label = QLabel(event["description"])
@@ -1279,6 +1572,13 @@ class WorklogWidget(QWidget):
             description_label.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 11px;")
             layout.addWidget(description_label)
         return row
+
+    def _populate_event_project_combo(self, combo, current_code=""):
+        combo.addItem("(none)", "")
+        for index, p in enumerate(list_projects()):
+            combo.addItem(f'{p["code"]} — {p["name"]}', p["code"])
+            if p["code"] == current_code:
+                combo.setCurrentIndex(index + 1)
 
     def _add_event_clicked(self):
         selected_date = self.calendar.selectedDate().toPyDate().isoformat()
@@ -1289,6 +1589,10 @@ class WorklogWidget(QWidget):
         layout.addWidget(QLabel("Title:"))
         title_input = QLineEdit()
         layout.addWidget(title_input)
+        layout.addWidget(QLabel("Job code (optional):"))
+        project_combo = QComboBox()
+        self._populate_event_project_combo(project_combo)
+        layout.addWidget(project_combo)
         layout.addWidget(QLabel("Time (optional):"))
         time_input = QTimeEdit()
         time_input.setDisplayFormat("h:mm AP")
@@ -1312,14 +1616,251 @@ class WorklogWidget(QWidget):
             add_event(
                 title_input.text(), selected_date,
                 time_input.time().toString("h:mm AP"), description_input.toPlainText(),
+                project_combo.currentData(),
             )
         except ValueError as exc:
             QMessageBox.warning(self, "Can't Add Event", str(exc))
             return
         self._refresh_calendar_events()
 
+    def _edit_event_clicked(self, event_id):
+        event = next((e for e in list_events() if e["id"] == event_id), None)
+        if event is None:
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Edit Calendar Event")
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Date:"))
+        date_edit = QDateEdit(QDate.fromString(event["date"], "yyyy-MM-dd"))
+        date_edit.setCalendarPopup(True)
+        layout.addWidget(date_edit)
+        layout.addWidget(QLabel("Title:"))
+        title_input = QLineEdit(event["title"])
+        layout.addWidget(title_input)
+        layout.addWidget(QLabel("Job code (optional):"))
+        project_combo = QComboBox()
+        self._populate_event_project_combo(project_combo, event.get("project_code", ""))
+        layout.addWidget(project_combo)
+        layout.addWidget(QLabel("Time (optional):"))
+        time_input = QTimeEdit()
+        time_input.setDisplayFormat("h:mm AP")
+        parsed_time = QTime.fromString(event["time"], "h:mm AP") if event["time"] else QTime()
+        if parsed_time.isValid():
+            time_input.setTime(parsed_time)
+        layout.addWidget(time_input)
+        layout.addWidget(QLabel("Description (optional):"))
+        description_input = QTextEdit(event["description"])
+        description_input.setFixedHeight(70)
+        layout.addWidget(description_input)
+        buttons = QHBoxLayout()
+        save_button = QPushButton("Save")
+        save_button.clicked.connect(dialog.accept)
+        buttons.addWidget(save_button)
+        cancel_button = QPushButton("Cancel")
+        cancel_button.clicked.connect(dialog.reject)
+        buttons.addWidget(cancel_button)
+        layout.addLayout(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        try:
+            update_event(
+                event_id, title_input.text(), date_edit.date().toPyDate().isoformat(),
+                time_input.time().toString("h:mm AP"), description_input.toPlainText(),
+                project_combo.currentData(),
+            )
+        except ValueError as exc:
+            QMessageBox.warning(self, "Can't Update Event", str(exc))
+            return
+        self._refresh_calendar_events()
+
     def _delete_event_clicked(self, event_id):
         delete_event(event_id)
+        self._refresh_calendar_events()
+
+    def _manage_recurring_events_clicked(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Recurring Chores")
+        dialog.resize(440, 420)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Weekly chores that auto-create a task (and calendar event) each time their day comes around."))
+
+        new_button = QPushButton("+ New Recurring Event")
+        layout.addWidget(new_button)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.addStretch()
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
+
+        def _rebuild_rows():
+            self._clear_layout(content_layout)
+            rules = list_recurring_events()
+            if not rules:
+                content_layout.addWidget(QLabel("No recurring chores yet."))
+            for rule in rules:
+                content_layout.addWidget(self._build_recurring_event_row(rule, _rebuild_rows))
+            content_layout.addStretch()
+
+        new_button.clicked.connect(lambda checked=False: self._new_recurring_event_clicked(_rebuild_rows))
+        _rebuild_rows()
+
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(dialog.accept)
+        layout.addWidget(close_button)
+        dialog.exec()
+
+    def _build_recurring_event_row(self, rule, refresh_callback):
+        row = QFrame()
+        row.setStyleSheet(f"QFrame {{ background-color: {BG_ELEVATED}; border: 1px solid {BORDER}; border-radius: 8px; }}")
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(10, 8, 10, 8)
+
+        text_col = QVBoxLayout()
+        title_label = QLabel(html.escape(rule["title"]))
+        title_label.setWordWrap(True)
+        title_label.setStyleSheet(f"color: {TEXT_PRIMARY}; font-weight: bold;")
+        text_col.addWidget(title_label)
+        project = get_project(rule["project_code"])
+        project_text = f'{rule["project_code"]} — {project["name"]}' if project else f'{rule["project_code"]} (deleted)'
+        status = "Active" if rule.get("active", True) else "Paused"
+        detail_label = QLabel(f'Every {WEEKDAY_NAMES[rule["weekday"]]} · {html.escape(project_text)} · {status}')
+        detail_label.setWordWrap(True)
+        detail_label.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 11px;")
+        text_col.addWidget(detail_label)
+        layout.addLayout(text_col, 1)
+
+        edit_button = QPushButton("✎")
+        edit_button.setToolTip("Edit")
+        edit_button.clicked.connect(
+            lambda checked=False, rule_id=rule["id"]: self._edit_recurring_event_clicked(rule_id, refresh_callback)
+        )
+        layout.addWidget(edit_button)
+        toggle_button = QPushButton("Pause" if rule.get("active", True) else "Resume")
+        toggle_button.clicked.connect(
+            lambda checked=False, rule_id=rule["id"], active=rule.get("active", True): self._toggle_recurring_event(
+                rule_id, not active, refresh_callback
+            )
+        )
+        layout.addWidget(toggle_button)
+        delete_button = QPushButton("🗑")
+        delete_button.clicked.connect(
+            lambda checked=False, rule_id=rule["id"], title=rule["title"]: self._delete_recurring_event_clicked(
+                rule_id, title, refresh_callback
+            )
+        )
+        layout.addWidget(delete_button)
+        return row
+
+    def _toggle_recurring_event(self, rule_id, active, refresh_callback):
+        set_recurring_event_active(rule_id, active)
+        refresh_callback()
+
+    def _delete_recurring_event_clicked(self, rule_id, title, refresh_callback):
+        reply = QMessageBox.question(
+            self, "Delete Recurring Event",
+            f'Stop generating "{title}"? Tasks it already created are kept.',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            delete_recurring_event(rule_id)
+            refresh_callback()
+
+    def _prompt_recurring_event_fields(self, window_title, initial=None):
+        """Title/Weekday/Project/Hours/Time/Description dialog shared by
+        create and edit - pre-filled from `initial` (a rule dict) when
+        editing. Returns the collected
+        (title, weekday, project_code, hours, time_str, description)
+        tuple, or None if the user cancelled."""
+        projects = list_projects()
+        if not projects:
+            QMessageBox.information(self, "No Projects Yet", "Create a project code first, in the Projects tab.")
+            return None
+        dialog = QDialog(self)
+        dialog.setWindowTitle(window_title)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Title:"))
+        title_input = QLineEdit(initial["title"] if initial else "")
+        layout.addWidget(title_input)
+        layout.addWidget(QLabel("Repeats every:"))
+        weekday_combo = QComboBox()
+        for index, name in enumerate(WEEKDAY_NAMES):
+            weekday_combo.addItem(name, index)
+        weekday_combo.setCurrentIndex(initial["weekday"] if initial else date.today().weekday())
+        layout.addWidget(weekday_combo)
+        layout.addWidget(QLabel("Project:"))
+        project_combo = QComboBox()
+        for index, p in enumerate(projects):
+            project_combo.addItem(f'{p["code"]} — {p["name"]}', p["code"])
+            if initial and p["code"] == initial["project_code"]:
+                project_combo.setCurrentIndex(index)
+        layout.addWidget(project_combo)
+        layout.addWidget(QLabel("Hours (optional):"))
+        hours_input = QDoubleSpinBox()
+        hours_input.setRange(0, 24)
+        hours_input.setDecimals(2)
+        hours_input.setSingleStep(0.25)
+        hours_input.setValue(initial["hours"] if initial else 0.0)
+        layout.addWidget(hours_input)
+        layout.addWidget(QLabel("Time (optional):"))
+        time_input = QTimeEdit()
+        time_input.setDisplayFormat("h:mm AP")
+        parsed_time = QTime.fromString(initial["time"], "h:mm AP") if initial and initial.get("time") else QTime()
+        if parsed_time.isValid():
+            time_input.setTime(parsed_time)
+        layout.addWidget(time_input)
+        layout.addWidget(QLabel("Description (optional):"))
+        description_input = QTextEdit(initial["description"] if initial else "")
+        description_input.setFixedHeight(60)
+        layout.addWidget(description_input)
+        buttons = QHBoxLayout()
+        ok_button = QPushButton("Save" if initial else "Create")
+        ok_button.clicked.connect(dialog.accept)
+        buttons.addWidget(ok_button)
+        cancel_button = QPushButton("Cancel")
+        cancel_button.clicked.connect(dialog.reject)
+        buttons.addWidget(cancel_button)
+        layout.addLayout(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return (
+            title_input.text(), weekday_combo.currentData(), project_combo.currentData(),
+            hours_input.value(), time_input.time().toString("h:mm AP"), description_input.toPlainText(),
+        )
+
+    def _new_recurring_event_clicked(self, refresh_callback):
+        fields = self._prompt_recurring_event_fields("New Recurring Event")
+        if fields is None:
+            return
+        try:
+            add_recurring_event(*fields)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Can't Create Recurring Event", str(exc))
+            return
+        sync_recurring_events()
+        refresh_callback()
+        self._rebuild_todo()
+        self._refresh_calendar_events()
+
+    def _edit_recurring_event_clicked(self, rule_id, refresh_callback):
+        rule = next((r for r in list_recurring_events() if r["id"] == rule_id), None)
+        if rule is None:
+            return
+        fields = self._prompt_recurring_event_fields("Edit Recurring Event", initial=rule)
+        if fields is None:
+            return
+        try:
+            update_recurring_event(rule_id, *fields)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Can't Update Recurring Event", str(exc))
+            return
+        sync_recurring_events()
+        refresh_callback()
+        self._rebuild_todo()
         self._refresh_calendar_events()
 
     # ------------------------------------------------------------------

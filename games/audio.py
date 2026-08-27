@@ -97,6 +97,50 @@ def _fail_recipe():
     return _sequence([(220, 0.09, 0.3, "square"), (160, 0.16, 0.28, "square")])
 
 
+def _tetris_move_recipe():
+    return _sequence([(180, 0.03, 0.14)])
+
+
+def _tetris_rotate_recipe():
+    return _sequence([(260, 0.04, 0.18)])
+
+
+def _tetris_lock_recipe():
+    return _sequence([(140, 0.05, 0.22, "square")])
+
+
+def _tetris_line_recipe():
+    return _sequence([(523, 0.06, 0.3), (659, 0.06, 0.32), (784, 0.08, 0.34)])
+
+
+def _tetris_tetris_recipe():
+    return _sequence([(523, 0.07, 0.35), (659, 0.07, 0.37), (784, 0.07, 0.4), (1047, 0.22, 0.48)])
+
+
+def _tetris_level_up_recipe():
+    return _sequence([(392, 0.08, 0.3), (523, 0.08, 0.32), (659, 0.16, 0.36)])
+
+
+def _tetris_game_over_recipe():
+    return _sequence([(220, 0.12, 0.3, "square"), (180, 0.12, 0.28, "square"), (140, 0.22, 0.26, "square")])
+
+
+def _hangman_correct_recipe():
+    return _sequence([(660, 0.07, 0.3), (880, 0.09, 0.32)])
+
+
+def _hangman_wrong_recipe():
+    return _sequence([(200, 0.09, 0.28, "square"), (150, 0.12, 0.26, "square")])
+
+
+def _hangman_win_recipe():
+    return _sequence([(523, 0.09, 0.36), (659, 0.09, 0.38), (784, 0.09, 0.4), (1047, 0.3, 0.48)])
+
+
+def _hangman_lose_recipe():
+    return _sequence([(220, 0.14, 0.3, "square"), (160, 0.14, 0.28, "square"), (110, 0.3, 0.26, "square")])
+
+
 EFFECT_RECIPES = {
     "cast": _cast_recipe,
     "catch_common": _catch_common_recipe,
@@ -105,6 +149,17 @@ EFFECT_RECIPES = {
     "purchase": _purchase_recipe,
     "prestige": _prestige_recipe,
     "fail": _fail_recipe,
+    "tetris_move": _tetris_move_recipe,
+    "tetris_rotate": _tetris_rotate_recipe,
+    "tetris_lock": _tetris_lock_recipe,
+    "tetris_line": _tetris_line_recipe,
+    "tetris_tetris": _tetris_tetris_recipe,
+    "tetris_level_up": _tetris_level_up_recipe,
+    "tetris_game_over": _tetris_game_over_recipe,
+    "hangman_correct": _hangman_correct_recipe,
+    "hangman_wrong": _hangman_wrong_recipe,
+    "hangman_win": _hangman_win_recipe,
+    "hangman_lose": _hangman_lose_recipe,
 }
 
 
