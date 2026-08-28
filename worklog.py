@@ -692,6 +692,30 @@ def daily_summary(iso_date):
     }
 
 
+def weekly_catchup(week_start_iso):
+    """Tasks touched during the week of week_start_iso - hours logged
+    against them, a status change, or a note added - each paired with its
+    hours for that week and its full note history. Built for the standup
+    screen, so it casts a wider net than daily_summary()'s completed-day
+    rule: a task still In Progress with no hours logged yet still belongs
+    here if someone left a note on it this week."""
+    start = date.fromisoformat(week_start_iso)
+    week_dates = {(start + timedelta(days=i)).isoformat() for i in range(7)}
+    entries = []
+    for task in list_tasks():
+        daily = task.get("daily_hours") or {}
+        week_hours = sum(h for d, h in daily.items() if d in week_dates)
+        if not daily and _last_completed_date(task) in {date.fromisoformat(d) for d in week_dates}:
+            week_hours = task.get("hours", 0.0)
+        status_changed = any(e["at"][:10] in week_dates for e in task["status_history"])
+        notes_this_week = any(n["at"][:10] in week_dates for n in task.get("notes", []))
+        if week_hours <= 0 and not status_changed and not notes_this_week:
+            continue
+        entries.append({"task": task, "week_hours": week_hours, "notes": task.get("notes", [])})
+    entries.sort(key=lambda e: e["week_hours"], reverse=True)
+    return entries
+
+
 def week_start_for(iso_date):
     d = date.fromisoformat(iso_date)
     return (d - timedelta(days=d.weekday())).isoformat()
@@ -733,11 +757,14 @@ class WorklogWidget(QWidget):
         self.calendar_tab = self._build_calendar_tab()
         self.projects_tab = self._build_projects_tab()
         self.reports_tab = self._build_reports_tab()
+        self.catchup_week_start = date.fromisoformat(week_start_for(date.today().isoformat()))
+        self.catchup_tab = self._build_catchup_tab()
         self.tabs.addTab(self.todo_tab, "Todo")
         self.tabs.addTab(self.focus_tab, "🌊 Focus")
         self.tabs.addTab(self.calendar_tab, "Calendar")
         self.tabs.addTab(self.projects_tab, "Projects")
         self.tabs.addTab(self.reports_tab, "Reports")
+        self.tabs.addTab(self.catchup_tab, "Weekly Catchup")
         self.tabs.currentChanged.connect(self._on_tab_changed)
 
         sync_recurring_events()
@@ -746,6 +773,7 @@ class WorklogWidget(QWidget):
         self._refresh_calendar_events()
         self._rebuild_projects()
         self._refresh_reports()
+        self._refresh_catchup()
 
     def _on_tab_changed(self, index):
         widget = self.tabs.widget(index)
@@ -761,6 +789,8 @@ class WorklogWidget(QWidget):
             self._rebuild_projects()
         elif widget is self.reports_tab:
             self._refresh_reports()
+        elif widget is self.catchup_tab:
+            self._refresh_catchup()
 
     # ------------------------------------------------------------------
     # Todo (kanban board)
@@ -2022,6 +2052,120 @@ class WorklogWidget(QWidget):
         lines.append(f"<p><b>Week grand total: {weekly['total_hours']:.2f} hours</b></p>")
 
         self.report_output.setHtml("".join(lines))
+
+    # ------------------------------------------------------------------
+    # Weekly Catchup (standup prep)
+    # ------------------------------------------------------------------
+    def _build_catchup_tab(self):
+        page = QWidget()
+        outer = QVBoxLayout(page)
+
+        top_row = QHBoxLayout()
+        prev_week_button = QPushButton("◀")
+        prev_week_button.setFixedWidth(28)
+        prev_week_button.setToolTip("Previous week")
+        prev_week_button.clicked.connect(lambda: self._catchup_shift_week(-7))
+        top_row.addWidget(prev_week_button)
+
+        self.catchup_week_label = QLabel()
+        self.catchup_week_label.setStyleSheet(f"color: {TEXT_PRIMARY}; font-weight: bold;")
+        self.catchup_week_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        top_row.addWidget(self.catchup_week_label)
+
+        next_week_button = QPushButton("▶")
+        next_week_button.setFixedWidth(28)
+        next_week_button.setToolTip("Next week")
+        next_week_button.clicked.connect(lambda: self._catchup_shift_week(7))
+        top_row.addWidget(next_week_button)
+
+        this_week_button = QPushButton("This Week")
+        this_week_button.clicked.connect(self._catchup_go_this_week)
+        top_row.addWidget(this_week_button)
+        top_row.addStretch()
+        outer.addLayout(top_row)
+
+        self.catchup_total_label = QLabel()
+        self.catchup_total_label.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 12px;")
+        outer.addWidget(self.catchup_total_label)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        self.catchup_layout = QVBoxLayout(content)
+        self.catchup_layout.addStretch()
+        scroll.setWidget(content)
+        outer.addWidget(scroll, 1)
+        return page
+
+    def _catchup_shift_week(self, delta_days):
+        self.catchup_week_start += timedelta(days=delta_days)
+        self._refresh_catchup()
+
+    def _catchup_go_this_week(self):
+        self.catchup_week_start = date.fromisoformat(week_start_for(date.today().isoformat()))
+        self._refresh_catchup()
+
+    def _refresh_catchup(self):
+        week_start = self.catchup_week_start
+        week_end = week_start + timedelta(days=6)
+        if week_start == date.fromisoformat(week_start_for(date.today().isoformat())):
+            self.catchup_week_label.setText(f"This Week ({week_start.strftime('%b %d')} – {week_end.strftime('%b %d')})")
+        else:
+            self.catchup_week_label.setText(f"{week_start.strftime('%b %d')} – {week_end.strftime('%b %d, %Y')}")
+
+        entries = weekly_catchup(week_start.isoformat())
+        self._clear_layout(self.catchup_layout)
+        if not entries:
+            self.catchup_layout.addWidget(QLabel("Nothing worked on this week."))
+        else:
+            for entry in entries:
+                self.catchup_layout.addWidget(self._build_catchup_card(entry))
+        self.catchup_layout.addStretch()
+
+        total_hours = sum(e["week_hours"] for e in entries)
+        self.catchup_total_label.setText(f"{len(entries)} ticket(s) touched — {total_hours:.2f} hours logged this week")
+
+    def _build_catchup_card(self, entry):
+        task = entry["task"]
+        card = QFrame()
+        card.setObjectName(f"catchup_{task['id']}")
+        card.setStyleSheet(
+            f"QFrame#catchup_{task['id']} {{ background-color: {BG_ELEVATED}; "
+            f"border: 2px solid {STATUS_COLORS[task['status']]}; border-radius: 6px; }}"
+        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(4)
+
+        header_row = QHBoxLayout()
+        title_label = QLabel(task["title"])
+        title_label.setWordWrap(True)
+        title_label.setStyleSheet(f"color: {TEXT_PRIMARY}; font-weight: bold; font-size: 14px;")
+        header_row.addWidget(title_label, 1)
+        hours_label = QLabel(f"{entry['week_hours']:.2f}h this week")
+        hours_label.setStyleSheet(f"color: {TEXT_PRIMARY}; font-weight: bold;")
+        header_row.addWidget(hours_label)
+        layout.addLayout(header_row)
+
+        project = get_project(task["project_code"])
+        project_text = f'{task["project_code"]} — {project["name"]}' if project else f'{task["project_code"]} (deleted)'
+        meta_label = QLabel(f'{project_text} · {task["status"]}')
+        meta_label.setStyleSheet(f"color: {STATUS_COLORS[task['status']]}; font-size: 11px;")
+        layout.addWidget(meta_label)
+
+        if task["notes"]:
+            for note in task["notes"]:
+                stamp = datetime.fromisoformat(note["at"]).strftime("%b %d")
+                note_label = QLabel(f"<b>{html.escape(stamp)}:</b> {html.escape(note['text'])}")
+                note_label.setWordWrap(True)
+                note_label.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 11px;")
+                layout.addWidget(note_label)
+        else:
+            no_notes_label = QLabel("No notes on this ticket.")
+            no_notes_label.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 11px; font-style: italic;")
+            layout.addWidget(no_notes_label)
+
+        return card
 
     # ------------------------------------------------------------------
     def _clear_layout(self, layout):

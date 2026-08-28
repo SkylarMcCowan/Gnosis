@@ -62,6 +62,13 @@
       "name": "LOZDEV",
       "description": "get to work slacker",
       "created_at": "2026-08-26T13:17:39.769532"
+    },
+    {
+      "id": "c7006dc9",
+      "code": "SUTDA",
+      "name": "Utah Davis",
+      "description": "Utah Davis Work",
+      "created_at": "2026-08-28T10:53:26.101297"
     }
   ],
   "tasks": [
@@ -100,18 +107,24 @@
           "id": "44d975a7",
           "text": "Test2",
           "at": "2026-08-26T10:20:58.916941"
+        },
+        {
+          "id": "19d1a858",
+          "text": "taking a look at NY machine i see how the machine works. most of the logic is there, just need the url list from chris turnage",
+          "at": "2026-08-28T11:19:46.833938"
         }
       ],
       "daily_hours": {
         "2026-08-26": 4.0,
-        "2026-08-27": 3.5
+        "2026-08-27": 3.5,
+        "2026-08-28": 3.0
       }
     },
     {
       "id": "44a1cb7c",
       "title": "71344 - Lane - Incorrect Default retest",
       "project_code": "VAIM2024",
-      "status": "Review",
+      "status": "Done",
       "hours": 6.0,
       "status_history": [
         {
@@ -129,6 +142,10 @@
         {
           "status": "Review",
           "at": "2026-08-27T16:19:45.002364"
+        },
+        {
+          "status": "Done",
+          "at": "2026-08-28T11:12:55.957706"
         }
       ],
       "created_at": "2026-08-26T10:10:00.091222",
@@ -142,6 +159,11 @@
           "id": "c6f55a9d",
           "text": "tested fix with forced values. can't get the S value to naturally occur. spent 8-12:30 on this.",
           "at": "2026-08-27T12:22:19.090074"
+        },
+        {
+          "id": "f20b10b5",
+          "text": "Nothing to really test, couldn't get to happen in real live so moving on. accepting our already validation tests",
+          "at": "2026-08-28T11:19:09.306751"
         }
       ],
       "daily_hours": {
@@ -296,16 +318,26 @@
       "id": "863e4890",
       "title": "Linkedin Post Builder",
       "project_code": "LOZDEV",
-      "status": "New",
+      "status": "Working",
       "hours": 0.0,
       "status_history": [
         {
           "status": "New",
           "at": "2026-08-26T21:04:14.848415"
+        },
+        {
+          "status": "Working",
+          "at": "2026-08-28T11:22:47.641741"
         }
       ],
       "created_at": "2026-08-26T21:04:14.848415",
-      "notes": [],
+      "notes": [
+        {
+          "id": "834c92a7",
+          "text": "works pretty good. still kinda shit. but we can refine more later this weekend.",
+          "at": "2026-08-28T11:23:03.570183"
+        }
+      ],
       "daily_hours": {}
     },
     {
@@ -339,6 +371,208 @@
       "created_at": "2026-08-27T16:21:04.280419",
       "notes": [],
       "daily_hours": {}
+    },
+    {
+      "id": "037f4ed0",
+      "title": "Clean Dog Bowls",
+      "project_code": "HOMECHORE",
+      "status": "New",
+      "hours": 0.0,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-08-28T07:42:16.298862"
+        }
+      ],
+      "created_at": "2026-08-28T07:42:16.298862",
+      "notes": [],
+      "daily_hours": {},
+      "recurring_event_id": "4d13ada4",
+      "recurring_date": "2026-08-28"
+    },
+    {
+      "id": "f3af0483",
+      "title": "71362 - Code Review - UTDA Update DB schema to support uds",
+      "project_code": "PRIMVM26",
+      "status": "Review",
+      "hours": 0.0,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-08-28T10:17:25.371074"
+        },
+        {
+          "status": "Working",
+          "at": "2026-08-28T10:28:54.907810"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-08-28T12:27:01.491550"
+        },
+        {
+          "status": "Review",
+          "at": "2026-08-28T12:27:02.549896"
+        }
+      ],
+      "created_at": "2026-08-28T10:17:25.371074",
+      "notes": [],
+      "daily_hours": {}
+    },
+    {
+      "id": "9d7cc1f3",
+      "title": "71363 - UTDA - VID change to support UDS",
+      "project_code": "PRIMVM26",
+      "status": "Review",
+      "hours": 0.0,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-08-28T10:19:20.841156"
+        },
+        {
+          "status": "Working",
+          "at": "2026-08-28T10:28:53.357038"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-08-28T12:27:04.126783"
+        },
+        {
+          "status": "Review",
+          "at": "2026-08-28T12:27:04.986360"
+        }
+      ],
+      "created_at": "2026-08-28T10:19:20.841156",
+      "notes": [],
+      "daily_hours": {}
+    },
+    {
+      "id": "06ecd910",
+      "title": "69087 - Analyzer - UTDA Fraud Prevention Voltage, Messaging, Order of Requests)",
+      "project_code": "PRIMVM26",
+      "status": "Review",
+      "hours": 0.0,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-08-28T10:20:19.033898"
+        },
+        {
+          "status": "Working",
+          "at": "2026-08-28T10:28:52.340828"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-08-28T12:27:07.135101"
+        },
+        {
+          "status": "Review",
+          "at": "2026-08-28T12:27:08.062473"
+        }
+      ],
+      "created_at": "2026-08-28T10:20:19.033898",
+      "notes": [],
+      "daily_hours": {}
+    },
+    {
+      "id": "0f293f5e",
+      "title": "71361 - IVS - UDS Support",
+      "project_code": "PMD2025A",
+      "status": "Review",
+      "hours": 0.0,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-08-28T10:21:25.778429"
+        },
+        {
+          "status": "Working",
+          "at": "2026-08-28T10:28:49.965916"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-08-28T12:27:13.210102"
+        },
+        {
+          "status": "Review",
+          "at": "2026-08-28T12:27:15.393463"
+        }
+      ],
+      "created_at": "2026-08-28T10:21:25.778429",
+      "notes": [],
+      "daily_hours": {}
+    },
+    {
+      "id": "bb1b9628",
+      "title": "70948 - IVS - Analyzer support UDS",
+      "project_code": "PMD2025A",
+      "status": "Review",
+      "hours": 0.0,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-08-28T10:22:53.547918"
+        },
+        {
+          "status": "Working",
+          "at": "2026-08-28T10:28:49.307484"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-08-28T12:27:09.731198"
+        },
+        {
+          "status": "Review",
+          "at": "2026-08-28T12:27:10.841460"
+        }
+      ],
+      "created_at": "2026-08-28T10:22:53.547918",
+      "notes": [],
+      "daily_hours": {}
+    },
+    {
+      "id": "ac4fb85b",
+      "title": "70952 - IVS - OBD inspection changes to UDS",
+      "project_code": "PRIMVM26",
+      "status": "Review",
+      "hours": 0.0,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-08-28T10:23:41.321921"
+        },
+        {
+          "status": "Working",
+          "at": "2026-08-28T10:28:47.489354"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-08-28T12:27:11.812323"
+        },
+        {
+          "status": "Review",
+          "at": "2026-08-28T12:27:14.518844"
+        }
+      ],
+      "created_at": "2026-08-28T10:23:41.321921",
+      "notes": [],
+      "daily_hours": {}
+    },
+    {
+      "id": "f2d7ec16",
+      "title": "Set up cache County",
+      "project_code": "SUPPADMIN",
+      "status": "New",
+      "hours": 0.0,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-08-28T11:22:41.521842"
+        }
+      ],
+      "created_at": "2026-08-28T11:22:41.521842",
+      "notes": [],
+      "daily_hours": {}
     }
   ],
   "events": [
@@ -351,6 +585,16 @@
       "created_at": "2026-08-26T13:01:24.696782",
       "recurring_event_id": "fdac4b14",
       "project_code": ""
+    },
+    {
+      "id": "6704c3d8",
+      "title": "Clean Dog Bowls",
+      "date": "2026-08-28",
+      "time": "9:00 AM",
+      "description": "",
+      "project_code": "HOMECHORE",
+      "created_at": "2026-08-28T07:42:16.298862",
+      "recurring_event_id": "4d13ada4"
     }
   ],
   "recurring_events": [
@@ -388,7 +632,7 @@
       "description": "",
       "active": true,
       "created_at": "2026-08-26T13:11:43.310180",
-      "last_generated_date": null
+      "last_generated_date": "2026-08-28"
     },
     {
       "id": "15a09377",

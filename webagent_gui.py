@@ -53,8 +53,10 @@ from games.mystery import MysteryWidget
 from games.tetris import TetrisWidget
 from games.hangman import HangmanWidget, CATEGORIES as HANGMAN_CATEGORIES
 from games.idle_island import IdleIslandWidget
+from games.cozy_world import CozyWorldWidget
 from worklog import WorklogWidget
 from content_builder import LinkedInBlogBuilderWidget
+from hacker import HackerWidget
 from core import subscriptions
 from core.activity_log import load_activity, clear_activity
 from memory.experience import load_experiences
@@ -610,9 +612,10 @@ class WebAgentGUI(QMainWindow):
         for widget in (
             self.zuma_widget, self.solitaire_widget, self.sudoku_widget,
             self.mystery_widget, self.tetris_widget, self.hangman_widget,
-            self.idle_island_widget,
+            self.idle_island_widget, self.cozy_world_widget,
         ):
             widget.save_now()
+        self.hacker_widget.stop_and_cleanup()
         super().closeEvent(event)
 
     def _update_mouth(self):
@@ -642,7 +645,7 @@ class WebAgentGUI(QMainWindow):
         for label in (
             "💬  Chat", "🔄  Self-Improve", "📊  Report", "📦  Proposals", "🧠  Knowledge",
             "🔔  Subscriptions", "🎮  Games", "🏝️  Idle Island", "🗂️  Work Tracker",
-            "📝  LinkedIn/Blog",
+            "📝  LinkedIn/Blog", "🕵️  Hacker", "🏕️  Cozy World",
         ):
             self.nav_list.addItem(label)
         root_layout.addWidget(self.nav_list)
@@ -663,6 +666,10 @@ class WebAgentGUI(QMainWindow):
         self.pages.addWidget(self.worklog_widget)
         self.content_builder_widget = LinkedInBlogBuilderWidget()
         self.pages.addWidget(self.content_builder_widget)
+        self.hacker_widget = HackerWidget()
+        self.pages.addWidget(self.hacker_widget)
+        self.cozy_world_widget = CozyWorldWidget()
+        self.pages.addWidget(self.cozy_world_widget)
 
         self.nav_list.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.nav_list.setCurrentRow(0)

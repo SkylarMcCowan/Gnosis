@@ -13,3 +13,4 @@ requests==2.31.0
 lxml>=5.2.2; platform_system != "Darwin" or python_version > "3.8"
 yt-dlp
 PyQt6>=6.6.1
+scapy>=2.7.0
