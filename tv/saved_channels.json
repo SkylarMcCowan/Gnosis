@@ -1,0 +1,31 @@
+[
+  {
+    "id": "7bc0907e",
+    "name": "Al Jazeera",
+    "stream_url": "https://dash4.antik.sk/live/test_aljazeera_eng/playlist.m3u8",
+    "country": "Qatar",
+    "quality": "Al Jazeera English"
+  },
+  {
+    "id": "a2122929",
+    "name": "PBS Nature",
+    "stream_url": "https://amg02333-pbs-amg02333c11-firetv-us-4242.playouts.now.amagi.tv/playlist.m3u8",
+    "country": "United States",
+    "quality": "1080p"
+  },
+  {
+    "id": "619857c7",
+    "name": "PBS Science",
+    "stream_url": "https://amg02333-pbs-amg02333c13-samsung-au-6858.playouts.now.amagi.tv/playlist.m3u8",
+    "country": "",
+    "quality": "1080p"
+  },
+  {
+    "id": "7a298406",
+    "name": "SYFY",
+    "stream_url": "http://23.237.104.106:8080/USA_SYFY/index.m3u8",
+    "country": "United States",
+    "quality": "720p",
+    "logo_url": "https://i.imgur.com/4fMWhUE.png"
+  }
+]

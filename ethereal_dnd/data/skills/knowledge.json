@@ -1,0 +1,12 @@
+{
+  "id": "knowledge",
+  "name": "Knowledge",
+  "key_ability": "INT",
+  "trained_only": true,
+  "armor_check_penalty": false,
+  "class_skill_by_class": [
+    "rogue",
+    "cleric",
+    "wizard"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "studded_leather",
+  "name": "Studded Leather Armor",
+  "weight": 20,
+  "value_gp": 25,
+  "properties": {
+    "armor_bonus": 3,
+    "max_dex_bonus": 5,
+    "armor_check_penalty": -1,
+    "arcane_spell_failure_pct": 15,
+    "speed_30_ft_base": 30,
+    "speed_20_ft_base": 20,
+    "armor_category": "light"
+  },
+  "requirements": [],
+  "effects": [],
+  "equipment_slot": "armor",
+  "rarity": "mundane"
+}

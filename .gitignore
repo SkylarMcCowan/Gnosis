@@ -11,3 +11,6 @@ gnosis_workspace/
 activity/
 news_cache.json
 user_details.log
+weather_station/tile_cache/*
+tv/logo_cache/*
+weather_station/config.json

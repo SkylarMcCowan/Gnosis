@@ -1,0 +1,30 @@
+{
+  "entries": [
+    {
+      "type": "none",
+      "weight": 12,
+      "min_danger": 0
+    },
+    {
+      "type": "combat",
+      "weight": 3,
+      "min_danger": 2,
+      "monster_ids": [
+        "bandit",
+        "bandit"
+      ]
+    },
+    {
+      "type": "traveler",
+      "weight": 3,
+      "min_danger": 0,
+      "description": "A pair of prospectors heading the other way share news of the road ahead."
+    },
+    {
+      "type": "discovery",
+      "weight": 2,
+      "min_danger": 0,
+      "description": "You spot an old mining cart, long abandoned, half-buried in scree."
+    }
+  ]
+}

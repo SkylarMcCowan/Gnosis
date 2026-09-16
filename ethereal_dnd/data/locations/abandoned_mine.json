@@ -1,0 +1,8 @@
+{
+  "id": "abandoned_mine",
+  "name": "Abandoned Mine",
+  "description": "A played-out silver mine west of town, shuttered for a decade - until a work crew reopened it three weeks ago and stopped sending word home.",
+  "npc_ids": [],
+  "discovered": false,
+  "locked": false
+}

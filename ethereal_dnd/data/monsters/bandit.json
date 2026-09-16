@@ -1,0 +1,20 @@
+{
+  "id": "bandit",
+  "name": "Bandit",
+  "npc_class": "warrior",
+  "hit_dice": 1,
+  "ability_scores": {
+    "STR": 13,
+    "DEX": 13,
+    "CON": 12,
+    "INT": 9,
+    "WIS": 10,
+    "CHA": 8
+  },
+  "natural_armor_bonus": 0,
+  "natural_weapon_id": null,
+  "weapon_id": "short_sword",
+  "armor_id": "leather",
+  "challenge_rating": "1/2",
+  "source": "1-HD humanoid presented as a 1st-level warrior, per docs/srd_reference/extra/TypesSubtypesAbilities.md's Humanoid Type feature text, not a dedicated Monster Manual stat block."
+}

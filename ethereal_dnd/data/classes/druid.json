@@ -1,0 +1,284 @@
+{
+  "id": "druid",
+  "name": "Druid",
+  "hit_die": 8,
+  "base_attack_progression": "average",
+  "save_progression": {
+    "fortitude": "good",
+    "reflex": "poor",
+    "will": "good"
+  },
+  "class_skills": [
+    "concentration",
+    "craft",
+    "diplomacy",
+    "handle_animal",
+    "heal",
+    "knowledge",
+    "listen",
+    "profession",
+    "ride",
+    "spellcraft",
+    "spot",
+    "survival",
+    "swim"
+  ],
+  "skill_points_per_level": 4,
+  "weapon_proficiencies": [
+    "club",
+    "dagger",
+    "dart",
+    "quarterstaff",
+    "scimitar",
+    "sickle",
+    "shortspear",
+    "sling",
+    "spear"
+  ],
+  "armor_proficiencies": [
+    "light",
+    "medium_nonmetal",
+    "shield_nonmetal_except_tower"
+  ],
+  "class_features": [
+    "animal_companion",
+    "nature_sense",
+    "wild_empathy",
+    "woodland_stride",
+    "trackless_step",
+    "resist_natures_lure",
+    "wild_shape",
+    "venom_immunity",
+    "a_thousand_faces",
+    "timeless_body"
+  ],
+  "spellcasting": {
+    "type": "divine",
+    "key_ability": "WIS",
+    "preparation": "prepared",
+    "spells_per_day": [
+      [
+        3,
+        1
+      ],
+      [
+        4,
+        2
+      ],
+      [
+        4,
+        2,
+        1
+      ],
+      [
+        5,
+        3,
+        2
+      ],
+      [
+        5,
+        3,
+        2,
+        1
+      ],
+      [
+        5,
+        3,
+        3,
+        2
+      ],
+      [
+        6,
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        6,
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        6,
+        4,
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        6,
+        4,
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        6,
+        5,
+        4,
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        6,
+        5,
+        4,
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        6,
+        5,
+        5,
+        4,
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        6,
+        5,
+        5,
+        4,
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        6,
+        5,
+        5,
+        5,
+        4,
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        6,
+        5,
+        5,
+        5,
+        4,
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        6,
+        5,
+        5,
+        5,
+        5,
+        4,
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        6,
+        5,
+        5,
+        5,
+        5,
+        4,
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        6,
+        5,
+        5,
+        5,
+        5,
+        5,
+        4,
+        4,
+        3,
+        3
+      ],
+      [
+        6,
+        5,
+        5,
+        5,
+        5,
+        5,
+        4,
+        4,
+        4,
+        4
+      ]
+    ]
+  },
+  "alignment_restriction": [
+    {
+      "id": "druid_alignment",
+      "description": "A druid who changes to a prohibited (non-neutral) alignment loses all spells and druid abilities.",
+      "scope": "class",
+      "trigger": {
+        "type": "alignment_deviation",
+        "check": "axis_requirement",
+        "required_alignment": null,
+        "max_axis_deviation": null,
+        "deity_relative": false,
+        "forbid_neutral_unless_deity_neutral": false,
+        "required_axis": "any_neutral",
+        "required_value": null,
+        "forbidden_value": null,
+        "matches_event": null
+      },
+      "on_violation": {
+        "effect": "revoke_class_powers",
+        "keeps": [
+          "weapon_proficiency",
+          "armor_proficiency",
+          "shield_proficiency"
+        ],
+        "restoration": "atonement"
+      }
+    },
+    {
+      "id": "druid_code_of_conduct",
+      "description": "A druid who ceases to revere nature or teaches Druidic to a nondruid loses all spells and druid abilities.",
+      "scope": "class",
+      "trigger": {
+        "type": "event_pattern",
+        "check": null,
+        "required_alignment": null,
+        "max_axis_deviation": null,
+        "deity_relative": false,
+        "forbid_neutral_unless_deity_neutral": false,
+        "required_axis": null,
+        "required_value": null,
+        "forbidden_value": null,
+        "matches_event": "BrokeCodeOfConduct"
+      },
+      "on_violation": {
+        "effect": "revoke_class_powers",
+        "keeps": [
+          "weapon_proficiency",
+          "armor_proficiency",
+          "shield_proficiency"
+        ],
+        "restoration": "atonement"
+      }
+    }
+  ]
+}

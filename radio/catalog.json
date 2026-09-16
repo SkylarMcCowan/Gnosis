@@ -1,0 +1,37 @@
+{
+  "authors": [
+    {
+      "id": "f5367607",
+      "name": "Brandon Sanderson"
+    }
+  ],
+  "series": [
+    {
+      "id": "4b428eb0",
+      "name": "The Stormlight Archive",
+      "author_id": "f5367607",
+      "synopsis": "",
+      "last_played_book_id": "4b3cb562"
+    }
+  ],
+  "books": [
+    {
+      "id": "a63fc6c0",
+      "title": "Words of Radiance",
+      "author_id": "f5367607",
+      "series_id": "4b428eb0",
+      "series_index": 2,
+      "synopsis": "",
+      "last_played_file_id": null
+    },
+    {
+      "id": "4b3cb562",
+      "title": "The Way of Kings",
+      "author_id": "f5367607",
+      "series_id": "4b428eb0",
+      "series_index": 1,
+      "synopsis": "",
+      "last_played_file_id": "77cebb09"
+    }
+  ]
+}

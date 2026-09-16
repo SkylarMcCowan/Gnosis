@@ -1,0 +1,19 @@
+{
+  "id": "padded",
+  "name": "Padded Armor",
+  "weight": 10,
+  "value_gp": 5,
+  "properties": {
+    "armor_bonus": 1,
+    "max_dex_bonus": 8,
+    "armor_check_penalty": 0,
+    "arcane_spell_failure_pct": 5,
+    "speed_30_ft_base": 30,
+    "speed_20_ft_base": 20,
+    "armor_category": "light"
+  },
+  "requirements": [],
+  "effects": [],
+  "equipment_slot": "armor",
+  "rarity": "mundane"
+}

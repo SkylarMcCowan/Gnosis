@@ -1,0 +1,31 @@
+{
+  "id": "commoner",
+  "name": "Commoner (NPC)",
+  "hit_die": 4,
+  "base_attack_progression": "poor",
+  "save_progression": {
+    "fortitude": "poor",
+    "reflex": "poor",
+    "will": "poor"
+  },
+  "class_skills": [
+    "climb",
+    "craft",
+    "handle_animal",
+    "jump",
+    "listen",
+    "profession",
+    "ride",
+    "spot",
+    "swim",
+    "use_rope"
+  ],
+  "skill_points_per_level": 2,
+  "weapon_proficiencies": [
+    "one_simple_weapon"
+  ],
+  "armor_proficiencies": [],
+  "class_features": [],
+  "spellcasting": null,
+  "alignment_restriction": []
+}

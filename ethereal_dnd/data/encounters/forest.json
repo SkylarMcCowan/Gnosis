@@ -1,0 +1,39 @@
+{
+  "entries": [
+    {
+      "type": "none",
+      "weight": 10,
+      "min_danger": 0
+    },
+    {
+      "type": "combat",
+      "weight": 4,
+      "min_danger": 1,
+      "monster_ids": [
+        "wolf",
+        "wolf"
+      ]
+    },
+    {
+      "type": "combat",
+      "weight": 3,
+      "min_danger": 2,
+      "monster_ids": [
+        "bandit",
+        "bandit"
+      ]
+    },
+    {
+      "type": "traveler",
+      "weight": 3,
+      "min_danger": 0,
+      "description": "A hooded traveler passes the other way, nodding but saying nothing."
+    },
+    {
+      "type": "discovery",
+      "weight": 2,
+      "min_danger": 0,
+      "description": "You find a cache of supplies left behind by an earlier traveler."
+    }
+  ]
+}

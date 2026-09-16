@@ -1,0 +1,15 @@
+{
+  "id": "sylvanis",
+  "name": "Sylvanis, the Verdant Mother",
+  "alignment": "N",
+  "domains": [
+    "Animal",
+    "Plant",
+    "Earth",
+    "Water"
+  ],
+  "dogma": "The forest does not hate the flame, nor the flood the field. Growth and decay are one wheel; tend the balance and take only what you return.",
+  "code_of_conduct": [],
+  "favored_weapon": "quarterstaff",
+  "symbol": "an oak leaf ringed by thorns"
+}

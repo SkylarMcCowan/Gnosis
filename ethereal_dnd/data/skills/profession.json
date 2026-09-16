@@ -1,0 +1,12 @@
+{
+  "id": "profession",
+  "name": "Profession",
+  "key_ability": "WIS",
+  "trained_only": true,
+  "armor_check_penalty": false,
+  "class_skill_by_class": [
+    "rogue",
+    "cleric",
+    "wizard"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "half-elf",
+  "name": "Half-Elf",
+  "ability_modifiers": {},
+  "size": "Medium",
+  "speed": 30,
+  "languages": [
+    "Common",
+    "Elven"
+  ],
+  "racial_traits": [
+    "Immunity to sleep spells and similar magical effects",
+    "+2 racial bonus on saves against enchantment spells or effects",
+    "Low-Light Vision",
+    "+1 racial bonus on Listen, Search, and Spot checks",
+    "+2 racial bonus on Diplomacy and Gather Information checks",
+    "Elven Blood: counts as an elf for race-related effects"
+  ],
+  "favored_class": "Any",
+  "special_abilities": []
+}

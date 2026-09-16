@@ -1,0 +1,19 @@
+{
+  "id": "chain_shirt",
+  "name": "Chain Shirt",
+  "weight": 25,
+  "value_gp": 100,
+  "properties": {
+    "armor_bonus": 4,
+    "max_dex_bonus": 4,
+    "armor_check_penalty": -2,
+    "arcane_spell_failure_pct": 20,
+    "speed_30_ft_base": 30,
+    "speed_20_ft_base": 20,
+    "armor_category": "light"
+  },
+  "requirements": [],
+  "effects": [],
+  "equipment_slot": "armor",
+  "rarity": "mundane"
+}

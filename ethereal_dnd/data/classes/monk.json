@@ -1,0 +1,93 @@
+{
+  "id": "monk",
+  "name": "Monk",
+  "hit_die": 8,
+  "base_attack_progression": "average",
+  "save_progression": {
+    "fortitude": "good",
+    "reflex": "good",
+    "will": "good"
+  },
+  "class_skills": [
+    "balance",
+    "climb",
+    "craft",
+    "diplomacy",
+    "escape_artist",
+    "handle_animal",
+    "hide",
+    "jump",
+    "knowledge",
+    "listen",
+    "move_silently",
+    "perform",
+    "profession",
+    "sense_motive",
+    "spot",
+    "swim",
+    "tumble"
+  ],
+  "skill_points_per_level": 4,
+  "weapon_proficiencies": [
+    "club",
+    "light_crossbow",
+    "heavy_crossbow",
+    "dagger",
+    "handaxe",
+    "javelin",
+    "kama",
+    "nunchaku",
+    "quarterstaff",
+    "sai",
+    "shuriken",
+    "siangham",
+    "sling"
+  ],
+  "armor_proficiencies": [],
+  "class_features": [
+    "flurry_of_blows",
+    "unarmed_strike",
+    "evasion",
+    "fast_movement",
+    "still_mind",
+    "ki_strike",
+    "slow_fall",
+    "purity_of_body",
+    "wholeness_of_body",
+    "diamond_body",
+    "abundant_step",
+    "diamond_soul",
+    "quivering_palm",
+    "timeless_body",
+    "tongue_of_the_sun_and_moon",
+    "empty_body",
+    "perfect_self"
+  ],
+  "spellcasting": null,
+  "alignment_restriction": [
+    {
+      "id": "monk_alignment",
+      "description": "A monk who becomes nonlawful cannot gain new levels as a monk but retains all monk abilities.",
+      "scope": "class",
+      "trigger": {
+        "type": "alignment_deviation",
+        "check": "axis_requirement",
+        "required_alignment": null,
+        "max_axis_deviation": null,
+        "deity_relative": false,
+        "forbid_neutral_unless_deity_neutral": false,
+        "required_axis": "law_chaos",
+        "required_value": "lawful",
+        "forbidden_value": null,
+        "matches_event": null
+      },
+      "on_violation": {
+        "effect": "block_advancement",
+        "keeps": [
+          "all_current_abilities"
+        ],
+        "restoration": "realignment"
+      }
+    }
+  ]
+}

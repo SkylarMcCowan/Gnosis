@@ -1,0 +1,19 @@
+{
+  "id": "buckler",
+  "name": "Buckler",
+  "weight": 5,
+  "value_gp": 15,
+  "properties": {
+    "armor_bonus": 1,
+    "max_dex_bonus": null,
+    "armor_check_penalty": -1,
+    "arcane_spell_failure_pct": 5,
+    "speed_30_ft_base": null,
+    "speed_20_ft_base": null,
+    "armor_category": "shield"
+  },
+  "requirements": [],
+  "effects": [],
+  "equipment_slot": "shield",
+  "rarity": "mundane"
+}

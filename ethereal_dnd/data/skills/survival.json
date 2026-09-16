@@ -1,0 +1,10 @@
+{
+  "id": "survival",
+  "name": "Survival",
+  "key_ability": "WIS",
+  "trained_only": false,
+  "armor_check_penalty": false,
+  "class_skill_by_class": [
+    "barbarian"
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "id": "mayor_voss",
+  "name": "Mayor Alden Voss",
+  "role": "mayor",
+  "location_id": "ravenhollow",
+  "npc_class": "aristocrat",
+  "npc_level": 5,
+  "ability_scores": {
+    "STR": 10,
+    "DEX": 10,
+    "CON": 11,
+    "INT": 13,
+    "WIS": 12,
+    "CHA": 15
+  },
+  "personality": "Anxious and overextended; wants the miners found before word reaches the capital.",
+  "faction_id": "ravenhollow_council",
+  "goals": [
+    "Keep Ravenhollow's trade routes safe",
+    "Avoid a panic over the missing miners"
+  ],
+  "rumors": [
+    {
+      "text": "The mayor is looking for mercenaries.",
+      "quest_id": "missing_miners"
+    },
+    {
+      "text": "Miners have disappeared.",
+      "quest_id": "missing_miners"
+    }
+  ]
+}

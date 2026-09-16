@@ -9,7 +9,7 @@ from core import models as core_models
 
 
 def test_models_registry_is_well_formed():
-    assert set(core_models.MODELS) == {"main", "search", "unfiltered", "coding"}
+    assert set(core_models.MODELS) == {"main", "search", "unfiltered", "coding", "fast"}
     assert all(isinstance(v, str) and v for v in core_models.MODELS.values())
 
 
@@ -37,7 +37,44 @@ def test_chat_forwards_to_ollama_when_available(monkeypatch):
     result = core_models.chat(model="main", messages=[{"role": "user", "content": "hi"}])
 
     assert result == {"message": {"content": "canned reply"}}
-    assert calls == [{"model": "main", "messages": [{"role": "user", "content": "hi"}], "stream": False}]
+    # "main" here is the literal string passed in (not a real Ollama model
+    # name), so it isn't a MODEL_CONTEXT key - falls back to DEFAULT_CONTEXT.
+    assert calls == [{
+        "model": "main", "messages": [{"role": "user", "content": "hi"}], "stream": False,
+        "options": {"num_ctx": core_models.DEFAULT_CONTEXT},
+    }]
+
+
+def test_chat_uses_the_per_model_context_window(monkeypatch):
+    calls = []
+
+    class FakeOllama:
+        @staticmethod
+        def chat(model, messages, stream=False, **kwargs):
+            calls.append(kwargs)
+            return {"message": {"content": "canned reply"}}
+
+    monkeypatch.setattr(core_models, "ollama", FakeOllama)
+
+    core_models.chat(model="qwen3.5:4b", messages=[{"role": "user", "content": "hi"}])
+
+    assert calls == [{"options": {"num_ctx": core_models.MODEL_CONTEXT["qwen3.5:4b"]}}]
+
+
+def test_chat_caller_supplied_options_take_precedence(monkeypatch):
+    calls = []
+
+    class FakeOllama:
+        @staticmethod
+        def chat(model, messages, stream=False, **kwargs):
+            calls.append(kwargs)
+            return {"message": {"content": "canned reply"}}
+
+    monkeypatch.setattr(core_models, "ollama", FakeOllama)
+
+    core_models.chat(model="qwen3.5:4b", messages=[], options={"num_ctx": 123, "temperature": 0.5})
+
+    assert calls == [{"options": {"num_ctx": 123, "temperature": 0.5}}]
 
 
 def test_pull_all_returns_false_when_ollama_unavailable(monkeypatch, capsys):

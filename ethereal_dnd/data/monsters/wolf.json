@@ -1,0 +1,19 @@
+{
+  "id": "wolf",
+  "name": "Wolf",
+  "npc_class": "animal",
+  "hit_dice": 2,
+  "ability_scores": {
+    "STR": 13,
+    "DEX": 15,
+    "CON": 15,
+    "INT": 2,
+    "WIS": 12,
+    "CHA": 6
+  },
+  "natural_armor_bonus": 2,
+  "natural_weapon_id": "wolf_bite",
+  "armor_id": null,
+  "challenge_rating": 1,
+  "source": "docs/srd_reference/extra/MonstersAnimals.md - attack bonus is 1 lower than the official +3 (Weapon Focus (bite) isn't modeled - Phase 1's feats are data labels only, no numeric feat bonuses applied yet)."
+}

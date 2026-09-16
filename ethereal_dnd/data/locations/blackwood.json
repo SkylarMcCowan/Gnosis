@@ -1,0 +1,8 @@
+{
+  "id": "blackwood",
+  "name": "Blackwood",
+  "description": "A dense, old forest north of Ravenhollow. Travelers on the North Road speak of wolves bolder than they should be, and lights that move where no lantern should.",
+  "npc_ids": [],
+  "discovered": false,
+  "locked": false
+}

@@ -1,0 +1,23 @@
+{
+  "id": "elf",
+  "name": "Elf",
+  "ability_modifiers": {
+    "DEX": 2,
+    "CON": -2
+  },
+  "size": "Medium",
+  "speed": 30,
+  "languages": [
+    "Common",
+    "Elven"
+  ],
+  "racial_traits": [
+    "Immunity to magic sleep effects",
+    "+2 racial saving throw bonus against enchantment spells or effects",
+    "Low-Light Vision",
+    "Weapon Proficiency: longsword, rapier, longbow, shortbow (as bonus feats)",
+    "+2 racial bonus on Listen, Search, and Spot checks"
+  ],
+  "favored_class": "Wizard",
+  "special_abilities": []
+}

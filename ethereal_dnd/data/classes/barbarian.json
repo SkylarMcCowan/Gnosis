@@ -1,0 +1,74 @@
+{
+  "id": "barbarian",
+  "name": "Barbarian",
+  "hit_die": 12,
+  "base_attack_progression": "good",
+  "save_progression": {
+    "fortitude": "good",
+    "reflex": "poor",
+    "will": "poor"
+  },
+  "class_skills": [
+    "climb",
+    "craft",
+    "handle_animal",
+    "intimidate",
+    "jump",
+    "listen",
+    "ride",
+    "survival",
+    "swim"
+  ],
+  "skill_points_per_level": 4,
+  "weapon_proficiencies": [
+    "simple",
+    "martial"
+  ],
+  "armor_proficiencies": [
+    "light",
+    "medium",
+    "shield_except_tower"
+  ],
+  "class_features": [
+    "fast_movement",
+    "rage",
+    "uncanny_dodge",
+    "trap_sense",
+    "improved_uncanny_dodge",
+    "damage_reduction",
+    "greater_rage",
+    "indomitable_will",
+    "tireless_rage",
+    "mighty_rage"
+  ],
+  "spellcasting": null,
+  "alignment_restriction": [
+    {
+      "id": "barbarian_alignment",
+      "description": "A barbarian who becomes lawful loses the ability to rage and cannot gain more levels as a barbarian.",
+      "scope": "class",
+      "trigger": {
+        "type": "alignment_deviation",
+        "check": "axis_forbidden",
+        "required_alignment": null,
+        "max_axis_deviation": null,
+        "deity_relative": false,
+        "forbid_neutral_unless_deity_neutral": false,
+        "required_axis": "law_chaos",
+        "required_value": null,
+        "forbidden_value": "lawful",
+        "matches_event": null
+      },
+      "on_violation": {
+        "effect": "block_advancement_and_signature_ability",
+        "keeps": [
+          "damage_reduction",
+          "fast_movement",
+          "trap_sense",
+          "uncanny_dodge"
+        ],
+        "restoration": "realignment"
+      }
+    }
+  ]
+}

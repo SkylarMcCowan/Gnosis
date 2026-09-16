@@ -1,0 +1,8 @@
+{
+  "id": "farmstead",
+  "name": "Farmstead",
+  "description": "A cluster of homesteads along the South Road, Ravenhollow's breadbasket.",
+  "npc_ids": [],
+  "discovered": false,
+  "locked": false
+}

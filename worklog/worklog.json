@@ -69,6 +69,13 @@
       "name": "Utah Davis",
       "description": "Utah Davis Work",
       "created_at": "2026-08-28T10:53:26.101297"
+    },
+    {
+      "id": "183e9e2e",
+      "code": "PUTCAIM24B",
+      "name": "UT Cache County",
+      "description": "",
+      "created_at": "2026-09-02T14:42:29.494863"
     }
   ],
   "tasks": [
@@ -76,7 +83,7 @@
       "id": "e00ee482",
       "title": "71085 - Analyzer - Can not print Audit reports from the Analyzer",
       "project_code": "PRIMVM26",
-      "status": "Working",
+      "status": "Done",
       "hours": 2.0,
       "status_history": [
         {
@@ -94,6 +101,18 @@
         {
           "status": "Working",
           "at": "2026-08-26T10:08:44.386085"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-09-01T20:56:56.346181"
+        },
+        {
+          "status": "Review",
+          "at": "2026-09-03T14:08:50.570115"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-04T13:57:00.584187"
         }
       ],
       "created_at": "2026-08-26T10:08:33.916137",
@@ -112,12 +131,19 @@
           "id": "19d1a858",
           "text": "taking a look at NY machine i see how the machine works. most of the logic is there, just need the url list from chris turnage",
           "at": "2026-08-28T11:19:46.833938"
+        },
+        {
+          "id": "456be16a",
+          "text": "Message to david Deere to get the DB update for the new table and contents",
+          "at": "2026-09-03T14:53:23.892125"
         }
       ],
       "daily_hours": {
         "2026-08-26": 4.0,
         "2026-08-27": 3.5,
-        "2026-08-28": 3.0
+        "2026-08-28": 3.0,
+        "2026-09-03": 3.0,
+        "2026-09-04": 6.0
       }
     },
     {
@@ -233,12 +259,16 @@
       "id": "8822aa10",
       "title": "LOZDEV Site",
       "project_code": "LOZDEV",
-      "status": "New",
+      "status": "Working",
       "hours": 0.0,
       "status_history": [
         {
           "status": "New",
           "at": "2026-08-26T13:18:30.683808"
+        },
+        {
+          "status": "Working",
+          "at": "2026-09-06T12:00:00"
         }
       ],
       "created_at": "2026-08-26T13:18:30.683808",
@@ -318,7 +348,7 @@
       "id": "863e4890",
       "title": "Linkedin Post Builder",
       "project_code": "LOZDEV",
-      "status": "Working",
+      "status": "Done",
       "hours": 0.0,
       "status_history": [
         {
@@ -328,6 +358,18 @@
         {
           "status": "Working",
           "at": "2026-08-28T11:22:47.641741"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-08-30T12:00:00"
+        },
+        {
+          "status": "Review",
+          "at": "2026-09-03T14:13:38.036682"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-03T14:13:39.204630"
         }
       ],
       "created_at": "2026-08-26T21:04:14.848415",
@@ -344,12 +386,28 @@
       "id": "940a5fca",
       "title": "N8N mess",
       "project_code": "LOZDEV",
-      "status": "New",
+      "status": "Done",
       "hours": 0.0,
       "status_history": [
         {
           "status": "New",
           "at": "2026-08-26T21:11:48.625967"
+        },
+        {
+          "status": "Working",
+          "at": "2026-09-01T10:25:19.735753"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-09-01T10:25:20.857733"
+        },
+        {
+          "status": "Review",
+          "at": "2026-09-01T10:25:21.764990"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-01T10:25:23.016365"
         }
       ],
       "created_at": "2026-08-26T21:11:48.625967",
@@ -360,12 +418,28 @@
       "id": "4967b0b7",
       "title": "penpot",
       "project_code": "LOZDEV",
-      "status": "New",
+      "status": "Done",
       "hours": 0.0,
       "status_history": [
         {
           "status": "New",
           "at": "2026-08-27T16:21:04.280419"
+        },
+        {
+          "status": "Working",
+          "at": "2026-09-01T20:57:00.520979"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-09-02T09:01:20.735823"
+        },
+        {
+          "status": "Review",
+          "at": "2026-09-02T09:01:21.881529"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-02T09:01:23.612220"
         }
       ],
       "created_at": "2026-08-27T16:21:04.280419",
@@ -394,7 +468,7 @@
       "id": "f3af0483",
       "title": "71362 - Code Review - UTDA Update DB schema to support uds",
       "project_code": "PRIMVM26",
-      "status": "Review",
+      "status": "Done",
       "hours": 0.0,
       "status_history": [
         {
@@ -412,6 +486,10 @@
         {
           "status": "Review",
           "at": "2026-08-28T12:27:02.549896"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-01T10:25:09.016418"
         }
       ],
       "created_at": "2026-08-28T10:17:25.371074",
@@ -422,7 +500,7 @@
       "id": "9d7cc1f3",
       "title": "71363 - UTDA - VID change to support UDS",
       "project_code": "PRIMVM26",
-      "status": "Review",
+      "status": "Done",
       "hours": 0.0,
       "status_history": [
         {
@@ -440,6 +518,10 @@
         {
           "status": "Review",
           "at": "2026-08-28T12:27:04.986360"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-01T10:25:10.115126"
         }
       ],
       "created_at": "2026-08-28T10:19:20.841156",
@@ -450,7 +532,7 @@
       "id": "06ecd910",
       "title": "69087 - Analyzer - UTDA Fraud Prevention Voltage, Messaging, Order of Requests)",
       "project_code": "PRIMVM26",
-      "status": "Review",
+      "status": "Done",
       "hours": 0.0,
       "status_history": [
         {
@@ -468,6 +550,10 @@
         {
           "status": "Review",
           "at": "2026-08-28T12:27:08.062473"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-01T10:25:10.765332"
         }
       ],
       "created_at": "2026-08-28T10:20:19.033898",
@@ -478,7 +564,7 @@
       "id": "0f293f5e",
       "title": "71361 - IVS - UDS Support",
       "project_code": "PMD2025A",
-      "status": "Review",
+      "status": "Done",
       "hours": 0.0,
       "status_history": [
         {
@@ -496,6 +582,10 @@
         {
           "status": "Review",
           "at": "2026-08-28T12:27:15.393463"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-01T10:25:11.799069"
         }
       ],
       "created_at": "2026-08-28T10:21:25.778429",
@@ -506,7 +596,7 @@
       "id": "bb1b9628",
       "title": "70948 - IVS - Analyzer support UDS",
       "project_code": "PMD2025A",
-      "status": "Review",
+      "status": "Done",
       "hours": 0.0,
       "status_history": [
         {
@@ -524,6 +614,10 @@
         {
           "status": "Review",
           "at": "2026-08-28T12:27:10.841460"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-01T10:25:12.561351"
         }
       ],
       "created_at": "2026-08-28T10:22:53.547918",
@@ -534,7 +628,7 @@
       "id": "ac4fb85b",
       "title": "70952 - IVS - OBD inspection changes to UDS",
       "project_code": "PRIMVM26",
-      "status": "Review",
+      "status": "Done",
       "hours": 0.0,
       "status_history": [
         {
@@ -552,6 +646,10 @@
         {
           "status": "Review",
           "at": "2026-08-28T12:27:14.518844"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-01T10:25:13.371426"
         }
       ],
       "created_at": "2026-08-28T10:23:41.321921",
@@ -562,17 +660,387 @@
       "id": "f2d7ec16",
       "title": "Set up cache County",
       "project_code": "SUPPADMIN",
-      "status": "New",
+      "status": "Done",
       "hours": 0.0,
       "status_history": [
         {
           "status": "New",
           "at": "2026-08-28T11:22:41.521842"
+        },
+        {
+          "status": "Working",
+          "at": "2026-09-01T10:25:47.221114"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-09-01T10:25:48.179477"
+        },
+        {
+          "status": "Review",
+          "at": "2026-09-01T10:25:49.073482"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-01T11:09:21.782507"
         }
       ],
       "created_at": "2026-08-28T11:22:41.521842",
       "notes": [],
       "daily_hours": {}
+    },
+    {
+      "id": "ce8b569a",
+      "title": "Laundry",
+      "project_code": "HOMECHORE",
+      "status": "Done",
+      "hours": 0.0,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-08-31T09:04:43.643665"
+        },
+        {
+          "status": "Working",
+          "at": "2026-08-31T14:01:02.480151"
+        },
+        {
+          "status": "New",
+          "at": "2026-08-31T14:01:05.779031"
+        },
+        {
+          "status": "Working",
+          "at": "2026-08-30T12:00:00"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-08-30T12:00:00"
+        },
+        {
+          "status": "Review",
+          "at": "2026-08-30T12:00:00"
+        },
+        {
+          "status": "Done",
+          "at": "2026-08-30T12:00:00"
+        }
+      ],
+      "created_at": "2026-08-31T09:04:43.643665",
+      "notes": [],
+      "daily_hours": {},
+      "recurring_event_id": "15a09377",
+      "recurring_date": "2026-08-29"
+    },
+    {
+      "id": "04892d4e",
+      "title": "Tire Pressure",
+      "project_code": "HOMECHORE",
+      "status": "New",
+      "hours": 0.0,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-08-31T14:00:59.301684"
+        }
+      ],
+      "created_at": "2026-08-31T14:00:59.301684",
+      "notes": [],
+      "daily_hours": {}
+    },
+    {
+      "id": "b82ac263",
+      "title": "Trash",
+      "project_code": "HOMECHORE",
+      "status": "Done",
+      "hours": 0.0,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-09-01T08:53:02.449152"
+        },
+        {
+          "status": "Working",
+          "at": "2026-09-01T10:25:29.138509"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-09-01T10:25:30.232971"
+        },
+        {
+          "status": "Review",
+          "at": "2026-09-01T10:25:31.236390"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-01T10:25:32.581903"
+        }
+      ],
+      "created_at": "2026-09-01T08:53:02.449152",
+      "notes": [],
+      "daily_hours": {},
+      "recurring_event_id": "708d7e9e",
+      "recurring_date": "2026-09-01"
+    },
+    {
+      "id": "b146fadb",
+      "title": "Poop Cleanup",
+      "project_code": "HOMECHORE",
+      "status": "Done",
+      "hours": 0.0,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-09-02T11:17:10.907666"
+        },
+        {
+          "status": "Working",
+          "at": "2026-09-06T12:00:00"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-09-06T12:00:00"
+        },
+        {
+          "status": "Review",
+          "at": "2026-09-06T12:00:00"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-06T12:00:00"
+        }
+      ],
+      "created_at": "2026-09-02T11:17:10.907666",
+      "notes": [],
+      "daily_hours": {},
+      "recurring_event_id": "fdac4b14",
+      "recurring_date": "2026-09-02"
+    },
+    {
+      "id": "26af20f3",
+      "title": "70949 - Analyzer - UDS Support",
+      "project_code": "PUTCAIM24B",
+      "status": "Review",
+      "hours": 0.0,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-09-03T14:48:49.187941"
+        },
+        {
+          "status": "Working",
+          "at": "2026-09-03T14:48:51.650983"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-09-13T09:15:30.965586"
+        },
+        {
+          "status": "Review",
+          "at": "2026-09-13T09:15:32.132653"
+        }
+      ],
+      "created_at": "2026-09-03T14:48:49.187941",
+      "notes": [],
+      "daily_hours": {}
+    },
+    {
+      "id": "8f39da51",
+      "title": "Clean Dog Bowls",
+      "project_code": "HOMECHORE",
+      "status": "Done",
+      "hours": 0.0,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-09-06T12:16:55.517954"
+        },
+        {
+          "status": "Working",
+          "at": "2026-09-06T12:00:00"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-09-06T12:00:00"
+        },
+        {
+          "status": "Review",
+          "at": "2026-09-06T12:00:00"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-06T12:00:00"
+        }
+      ],
+      "created_at": "2026-09-06T12:16:55.517954",
+      "notes": [],
+      "daily_hours": {},
+      "recurring_event_id": "4d13ada4",
+      "recurring_date": "2026-09-04"
+    },
+    {
+      "id": "d86a591e",
+      "title": "Trash",
+      "project_code": "HOMECHORE",
+      "status": "Done",
+      "hours": 0.0,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-09-08T08:02:48.264899"
+        },
+        {
+          "status": "Working",
+          "at": "2026-09-08T09:49:38.291597"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-09-08T09:49:40.111828"
+        },
+        {
+          "status": "Review",
+          "at": "2026-09-08T09:49:41.366702"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-08T09:49:42.395200"
+        }
+      ],
+      "created_at": "2026-09-08T08:02:48.264899",
+      "notes": [],
+      "daily_hours": {},
+      "recurring_event_id": "708d7e9e",
+      "recurring_date": "2026-09-08"
+    },
+    {
+      "id": "cb3467ba",
+      "title": "Poop Cleanup",
+      "project_code": "HOMECHORE",
+      "status": "Done",
+      "hours": 0.0,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-09-09T09:47:08.665472"
+        },
+        {
+          "status": "Working",
+          "at": "2026-09-10T11:50:00.643862"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-09-10T11:50:03.100134"
+        },
+        {
+          "status": "Review",
+          "at": "2026-09-10T11:50:03.969434"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-10T11:50:04.741777"
+        }
+      ],
+      "created_at": "2026-09-09T09:47:08.665472",
+      "notes": [],
+      "daily_hours": {},
+      "recurring_event_id": "fdac4b14",
+      "recurring_date": "2026-09-09"
+    },
+    {
+      "id": "83fff534",
+      "title": "67082 - code review - add cancel logic to rev void",
+      "project_code": "PMD2025A",
+      "status": "Done",
+      "hours": 0.5,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-09-09T12:07:09.265832"
+        },
+        {
+          "status": "Working",
+          "at": "2026-09-09T12:07:15.482556"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-09-09T12:07:17.505541"
+        },
+        {
+          "status": "Review",
+          "at": "2026-09-09T12:07:19.602384"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-09T12:07:20.709852"
+        }
+      ],
+      "created_at": "2026-09-09T12:07:09.265832",
+      "notes": [],
+      "daily_hours": {}
+    },
+    {
+      "id": "c03eb349",
+      "title": "70048 - Analyzer - Fix Focus",
+      "project_code": "PMD2025A",
+      "status": "Done",
+      "hours": 1.0,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-09-10T11:50:29.655087"
+        },
+        {
+          "status": "Working",
+          "at": "2026-09-10T11:50:32.736311"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-09-10T11:50:34.520621"
+        },
+        {
+          "status": "Review",
+          "at": "2026-09-10T11:50:38.683608"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-10T11:50:39.552708"
+        }
+      ],
+      "created_at": "2026-09-10T11:50:29.655087",
+      "notes": [],
+      "daily_hours": {}
+    },
+    {
+      "id": "79fc18b3",
+      "title": "Laundry",
+      "project_code": "HOMECHORE",
+      "status": "Done",
+      "hours": 0.0,
+      "status_history": [
+        {
+          "status": "New",
+          "at": "2026-09-13T09:02:07.706092"
+        },
+        {
+          "status": "Working",
+          "at": "2026-09-13T09:15:26.182193"
+        },
+        {
+          "status": "Hold",
+          "at": "2026-09-13T09:15:27.615438"
+        },
+        {
+          "status": "Review",
+          "at": "2026-09-13T09:15:28.539678"
+        },
+        {
+          "status": "Done",
+          "at": "2026-09-13T09:15:29.598673"
+        }
+      ],
+      "created_at": "2026-09-13T09:02:07.706092",
+      "notes": [],
+      "daily_hours": {},
+      "recurring_event_id": "15a09377",
+      "recurring_date": "2026-09-12"
     }
   ],
   "events": [
@@ -595,6 +1063,96 @@
       "project_code": "HOMECHORE",
       "created_at": "2026-08-28T07:42:16.298862",
       "recurring_event_id": "4d13ada4"
+    },
+    {
+      "id": "df0ab49a",
+      "title": "Laundry",
+      "date": "2026-08-29",
+      "time": "12:00 PM",
+      "description": "",
+      "project_code": "HOMECHORE",
+      "created_at": "2026-08-31T09:04:43.643665",
+      "recurring_event_id": "15a09377"
+    },
+    {
+      "id": "d4b8c492",
+      "title": "Trash",
+      "date": "2026-09-01",
+      "time": "7:30 AM",
+      "description": "Take out the trash, don't forget bathroom Trash",
+      "project_code": "HOMECHORE",
+      "created_at": "2026-09-01T08:53:02.449152",
+      "recurring_event_id": "708d7e9e"
+    },
+    {
+      "id": "90e34cd4",
+      "title": "Poop Cleanup",
+      "date": "2026-09-02",
+      "time": "5:00 PM",
+      "description": "Spray the yard bi-weekly",
+      "project_code": "HOMECHORE",
+      "created_at": "2026-09-02T11:17:10.907666",
+      "recurring_event_id": "fdac4b14"
+    },
+    {
+      "id": "92ffc6c5",
+      "title": "Clean Dog Bowls",
+      "date": "2026-09-04",
+      "time": "9:00 AM",
+      "description": "",
+      "project_code": "HOMECHORE",
+      "created_at": "2026-09-06T12:16:55.517954",
+      "recurring_event_id": "4d13ada4"
+    },
+    {
+      "id": "87370aed",
+      "title": "Laundry",
+      "date": "2026-09-05",
+      "time": "12:00 PM",
+      "description": "",
+      "project_code": "HOMECHORE",
+      "created_at": "2026-09-06T12:16:55.517998",
+      "recurring_event_id": "15a09377"
+    },
+    {
+      "id": "0ec5ae38",
+      "title": "Trash",
+      "date": "2026-09-08",
+      "time": "7:30 AM",
+      "description": "Take out the trash, don't forget bathroom Trash",
+      "project_code": "HOMECHORE",
+      "created_at": "2026-09-08T08:02:48.264899",
+      "recurring_event_id": "708d7e9e"
+    },
+    {
+      "id": "64b1678b",
+      "title": "Poop Cleanup",
+      "date": "2026-09-09",
+      "time": "5:00 PM",
+      "description": "Spray the yard bi-weekly",
+      "project_code": "HOMECHORE",
+      "created_at": "2026-09-09T09:47:08.665472",
+      "recurring_event_id": "fdac4b14"
+    },
+    {
+      "id": "bf4bc3bd",
+      "title": "Clean Dog Bowls",
+      "date": "2026-09-11",
+      "time": "9:00 AM",
+      "description": "",
+      "project_code": "HOMECHORE",
+      "created_at": "2026-09-11T09:20:01.712356",
+      "recurring_event_id": "4d13ada4"
+    },
+    {
+      "id": "e3a47b45",
+      "title": "Laundry",
+      "date": "2026-09-12",
+      "time": "12:00 PM",
+      "description": "",
+      "project_code": "HOMECHORE",
+      "created_at": "2026-09-13T09:02:07.706092",
+      "recurring_event_id": "15a09377"
     }
   ],
   "recurring_events": [
@@ -608,7 +1166,7 @@
       "description": "Take out the trash, don't forget bathroom Trash",
       "active": true,
       "created_at": "2026-08-26T13:00:43.138794",
-      "last_generated_date": null
+      "last_generated_date": "2026-09-08"
     },
     {
       "id": "fdac4b14",
@@ -620,7 +1178,7 @@
       "description": "Spray the yard bi-weekly",
       "active": true,
       "created_at": "2026-08-26T13:01:24.695722",
-      "last_generated_date": "2026-08-26"
+      "last_generated_date": "2026-09-09"
     },
     {
       "id": "4d13ada4",
@@ -632,7 +1190,7 @@
       "description": "",
       "active": true,
       "created_at": "2026-08-26T13:11:43.310180",
-      "last_generated_date": "2026-08-28"
+      "last_generated_date": "2026-09-11"
     },
     {
       "id": "15a09377",
@@ -644,7 +1202,7 @@
       "description": "",
       "active": true,
       "created_at": "2026-08-26T13:12:08.967649",
-      "last_generated_date": null
+      "last_generated_date": "2026-09-12"
     }
   ]
 }

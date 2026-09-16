@@ -1,0 +1,20 @@
+{
+  "id": "bandit_leader",
+  "name": "Bandit Leader",
+  "npc_class": "warrior",
+  "hit_dice": 4,
+  "ability_scores": {
+    "STR": 15,
+    "DEX": 13,
+    "CON": 13,
+    "INT": 10,
+    "WIS": 11,
+    "CHA": 12
+  },
+  "natural_armor_bonus": 0,
+  "natural_weapon_id": null,
+  "weapon_id": "longsword",
+  "armor_id": "chain_shirt",
+  "challenge_rating": 3,
+  "source": "4th-level warrior, same humanoid-as-NPC-class convention as bandit."
+}

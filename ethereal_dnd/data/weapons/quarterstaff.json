@@ -1,0 +1,18 @@
+{
+  "id": "quarterstaff",
+  "name": "Quarterstaff",
+  "weight": 4,
+  "value_gp": 0,
+  "properties": {
+    "damage_dice": "1d6",
+    "critical": "x2",
+    "range_increment_ft": null,
+    "damage_type": "bludgeoning",
+    "weapon_category": "simple",
+    "weapon_group": "two_handed"
+  },
+  "requirements": [],
+  "effects": [],
+  "equipment_slot": "weapon",
+  "rarity": "mundane"
+}

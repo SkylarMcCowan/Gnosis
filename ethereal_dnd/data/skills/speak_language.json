@@ -1,0 +1,8 @@
+{
+  "id": "speak_language",
+  "name": "Speak Language",
+  "key_ability": null,
+  "trained_only": true,
+  "armor_check_penalty": false,
+  "class_skill_by_class": []
+}

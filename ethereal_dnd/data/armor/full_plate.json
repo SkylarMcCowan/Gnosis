@@ -1,0 +1,19 @@
+{
+  "id": "full_plate",
+  "name": "Full Plate",
+  "weight": 50,
+  "value_gp": 1500,
+  "properties": {
+    "armor_bonus": 8,
+    "max_dex_bonus": 1,
+    "armor_check_penalty": -6,
+    "arcane_spell_failure_pct": 35,
+    "speed_30_ft_base": 20,
+    "speed_20_ft_base": 15,
+    "armor_category": "heavy"
+  },
+  "requirements": [],
+  "effects": [],
+  "equipment_slot": "armor",
+  "rarity": "mundane"
+}

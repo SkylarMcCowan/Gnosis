@@ -132,8 +132,110 @@ def test_build_polish_messages_targets_the_current_draft():
 def test_add_history_entry_then_delete():
     entry = cb.add_history_entry("linkedin", "topic", "Professional", "content here")
     assert cb.load_data()["history"][0]["id"] == entry["id"]
+    assert entry["scheduled_date"] == ""
+    assert entry["posted"] is False
+    assert entry["visual_suggestion"] == ""
     cb.delete_history_entry(entry["id"])
     assert cb.load_data()["history"] == []
+
+
+def test_add_history_entry_stores_visual_suggestion():
+    entry = cb.add_history_entry("linkedin", "topic", "Professional", "content", visual_suggestion="A photo of a laptop.")
+    assert cb.load_data()["history"][0]["visual_suggestion"] == "A photo of a laptop."
+
+
+def test_load_data_backfills_missing_history_entry_fields():
+    cb.save_data({
+        "business_profile": "Old profile.",
+        "history": [{"id": "abc123", "post_type": "linkedin", "topic": "t", "tone": "Professional", "content": "c"}],
+    })
+    entry = cb.load_data()["history"][0]
+    assert entry["scheduled_date"] == ""
+    assert entry["posted"] is False
+    assert entry["visual_suggestion"] == ""
+
+
+def test_schedule_history_entry_sets_and_clears_date():
+    entry = cb.add_history_entry("linkedin", "topic", "Professional", "content")
+    cb.schedule_history_entry(entry["id"], "2026-09-15")
+    assert cb.load_data()["history"][0]["scheduled_date"] == "2026-09-15"
+    cb.schedule_history_entry(entry["id"], "")
+    assert cb.load_data()["history"][0]["scheduled_date"] == ""
+
+
+def test_set_history_entry_posted_toggles_flag():
+    entry = cb.add_history_entry("linkedin", "topic", "Professional", "content")
+    cb.set_history_entry_posted(entry["id"], True)
+    assert cb.load_data()["history"][0]["posted"] is True
+    cb.set_history_entry_posted(entry["id"], False)
+    assert cb.load_data()["history"][0]["posted"] is False
+
+
+def test_entries_scheduled_on_filters_by_date():
+    a = cb.add_history_entry("linkedin", "a", "Professional", "content a")
+    b = cb.add_history_entry("blog", "b", "Professional", "content b")
+    cb.schedule_history_entry(a["id"], "2026-09-15")
+    cb.schedule_history_entry(b["id"], "2026-09-20")
+    scheduled = cb.entries_scheduled_on("2026-09-15")
+    assert [e["id"] for e in scheduled] == [a["id"]]
+
+
+def test_scheduled_dates_returns_distinct_dates_only():
+    a = cb.add_history_entry("linkedin", "a", "Professional", "content a")
+    b = cb.add_history_entry("blog", "b", "Professional", "content b")
+    cb.schedule_history_entry(a["id"], "2026-09-15")
+    cb.schedule_history_entry(b["id"], "2026-09-15")
+    assert cb.scheduled_dates() == {"2026-09-15"}
+
+
+def test_build_visual_messages_targets_post_text_and_business_profile():
+    messages = cb.build_visual_messages("LOZDEV builds websites.", "linkedin", "Finished post text.")
+    assert messages[1]["content"] == "Finished post text."
+    system = messages[0]["content"]
+    assert "LOZDEV builds websites." in system
+    assert "Image concept:" in system
+    assert "Alt text:" in system
+
+
+def test_build_idea_messages_includes_focus_audience_and_avoid_phrases():
+    messages = cb.build_idea_messages(
+        "LOZDEV builds websites.", audience="Local retailers", avoid_phrases="synergy", focus="spring refresh",
+    )
+    system = messages[0]["content"]
+    assert "Local retailers" in system
+    assert "spring refresh" in system
+    assert "synergy" in system
+    assert "Angle | Topic | One-line note" in system
+
+
+def test_parse_ideas_splits_pipe_delimited_lines():
+    text = (
+        "Educational tip | Why DNS matters | Explain propagation delay\n"
+        "Common mistake | Skipping backups | Cost of losing a site\n"
+    )
+    ideas = cb.parse_ideas(text)
+    assert ideas == [
+        {"angle": "Educational tip", "topic": "Why DNS matters", "note": "Explain propagation delay"},
+        {"angle": "Common mistake", "topic": "Skipping backups", "note": "Cost of losing a site"},
+    ]
+
+
+def test_parse_ideas_tolerates_numbering_and_bullets():
+    text = "1. Educational tip | Why DNS matters | note\n- Common mistake | Skipping backups | note\n"
+    ideas = cb.parse_ideas(text)
+    assert [i["angle"] for i in ideas] == ["Educational tip", "Common mistake"]
+
+
+def test_parse_ideas_skips_lines_without_a_topic_but_keeps_valid_ones():
+    text = "Educational tip |\nCommon mistake | Skipping backups | note\n"
+    ideas = cb.parse_ideas(text)
+    assert len(ideas) == 1
+    assert ideas[0]["topic"] == "Skipping backups"
+
+
+def test_parse_ideas_raises_when_nothing_matches_the_expected_format():
+    with pytest.raises(ValueError):
+        cb.parse_ideas("Sure, here are some great ideas for your business!")
 
 
 def test_list_available_models_falls_back_when_ollama_unavailable(monkeypatch):

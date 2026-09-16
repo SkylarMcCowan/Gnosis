@@ -50,6 +50,79 @@ Run a Gnosis-managed cron task's action right now, without waiting for its sched
 - Parameters:
   - `task_id`: string
 
+## `design.add_board`
+
+Add a board (artboard/frame) to a page in a Penpot file - a container to lay other shapes out on.
+
+- Permission: `RESTRICTED`
+- Parameters:
+  - `file_id`: string
+  - `name`: string
+  - `x`: number, optional
+  - `y`: number, optional
+  - `width`: number, optional
+  - `height`: number, optional
+  - `page_id`: string, optional (defaults to the file's first page)
+  - `fill_color`: string, optional (hex, e.g. '#FFFFFF')
+
+## `design.add_shape`
+
+Add a rectangle, circle, or text shape to a Penpot file's page (or inside a specific board).
+
+- Permission: `RESTRICTED`
+- Parameters:
+  - `file_id`: string
+  - `shape_type`: string ('rect' | 'circle' | 'text')
+  - `page_id`: string, optional (defaults to the file's first page)
+  - `board_id`: string, optional (nest inside this board's shape id rather than the page root)
+  - `x`: number, optional
+  - `y`: number, optional
+  - `width`: number, optional
+  - `height`: number, optional
+  - `fill_color`: string, optional (hex, e.g. '#FF0000')
+  - `text`: string, optional (only used when shape_type is 'text')
+  - `font_size`: number, optional
+  - `name`: string, optional
+
+## `design.create_file`
+
+Create a new (empty, single-page) Penpot file inside a project.
+
+- Permission: `RESTRICTED`
+- Parameters:
+  - `project_id`: string
+  - `name`: string
+
+## `design.create_project`
+
+Create a new Penpot project in the connected instance's default team.
+
+- Permission: `RESTRICTED`
+- Parameters:
+  - `name`: string
+
+## `design.get_file`
+
+Get a Penpot file's pages (id, name, shape count) - use this to find a page_id (or a board's shape id) before calling design.add_board/add_shape.
+
+- Permission: `SAFE`
+- Parameters:
+  - `file_id`: string
+
+## `design.list_files`
+
+List the files inside a Penpot project.
+
+- Permission: `SAFE`
+- Parameters:
+  - `project_id`: string
+
+## `design.list_projects`
+
+List the Penpot projects in the connected instance's default team.
+
+- Permission: `SAFE`
+
 ## `fs.read`
 
 Read a file's content from an open sandbox workspace.

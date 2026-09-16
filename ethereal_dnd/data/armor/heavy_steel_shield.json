@@ -1,0 +1,19 @@
+{
+  "id": "heavy_steel_shield",
+  "name": "Heavy Steel Shield",
+  "weight": 15,
+  "value_gp": 20,
+  "properties": {
+    "armor_bonus": 2,
+    "max_dex_bonus": null,
+    "armor_check_penalty": -2,
+    "arcane_spell_failure_pct": 15,
+    "speed_30_ft_base": null,
+    "speed_20_ft_base": null,
+    "armor_category": "shield"
+  },
+  "requirements": [],
+  "effects": [],
+  "equipment_slot": "shield",
+  "rarity": "mundane"
+}

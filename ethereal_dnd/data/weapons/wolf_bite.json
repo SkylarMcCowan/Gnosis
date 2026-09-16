@@ -1,0 +1,18 @@
+{
+  "id": "wolf_bite",
+  "name": "Bite",
+  "weight": 0,
+  "value_gp": 0,
+  "properties": {
+    "damage_dice": "1d6",
+    "critical": "x2",
+    "range_increment_ft": null,
+    "damage_type": "piercing",
+    "weapon_category": "natural",
+    "weapon_group": "light"
+  },
+  "requirements": [],
+  "effects": [],
+  "equipment_slot": "weapon",
+  "rarity": "mundane"
+}

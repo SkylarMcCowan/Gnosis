@@ -1,0 +1,28 @@
+{
+  "id": "missing_miners",
+  "title": "The Missing Miners",
+  "description": "Mayor Voss wants the vanished Abandoned Mine crew found - dead or alive.",
+  "giver_id": "mayor_voss",
+  "objectives": [
+    {
+      "type": "investigate",
+      "description": "Travel to the Abandoned Mine and learn what happened to the crew.",
+      "done": false
+    },
+    {
+      "type": "kill",
+      "description": "Deal with whoever or whatever is responsible.",
+      "done": false
+    }
+  ],
+  "requirements": [
+    "npc_alive:mayor_voss"
+  ],
+  "rewards": {
+    "gold": 150,
+    "experience": 300
+  },
+  "failure_conditions": [
+    "mayor_voss died"
+  ]
+}

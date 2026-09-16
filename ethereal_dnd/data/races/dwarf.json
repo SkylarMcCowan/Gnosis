@@ -1,0 +1,28 @@
+{
+  "id": "dwarf",
+  "name": "Dwarf",
+  "ability_modifiers": {
+    "CON": 2,
+    "CHA": -2
+  },
+  "size": "Medium",
+  "speed": 20,
+  "languages": [
+    "Common",
+    "Dwarven"
+  ],
+  "racial_traits": [
+    "Speed never reduced by armor or carrying capacity",
+    "Darkvision 60 ft.",
+    "Stonecunning: +2 racial bonus on Search checks to notice unusual stonework",
+    "Weapon Familiarity: dwarven waraxe and dwarven urgrosh treated as martial weapons",
+    "Stability: +4 bonus vs. bull rush/trip while standing on the ground",
+    "+2 racial bonus on saves against poison",
+    "+2 racial bonus on saves against spells and spell-like effects",
+    "+1 racial bonus on attack rolls against orcs and goblinoids",
+    "+4 dodge bonus to AC against monsters of the giant type",
+    "+2 racial bonus on Appraise and Craft checks related to stone or metal"
+  ],
+  "favored_class": "Fighter",
+  "special_abilities": []
+}

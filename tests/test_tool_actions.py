@@ -65,7 +65,7 @@ class TestAvailableToolActions:
         names = {t.name for t in webagent._available_tool_actions()}
         assert names == {
             "cron.list", "git.status", "git.diff", "repo.audit", "repo.audit_advanced", "fs.read",
-            "subscriptions.list",
+            "subscriptions.list", "design.list_projects", "design.list_files", "design.get_file",
         }
 
 

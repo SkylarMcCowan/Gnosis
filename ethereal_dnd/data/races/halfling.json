@@ -1,0 +1,24 @@
+{
+  "id": "halfling",
+  "name": "Halfling",
+  "ability_modifiers": {
+    "DEX": 2,
+    "STR": -2
+  },
+  "size": "Small",
+  "speed": 20,
+  "languages": [
+    "Common",
+    "Halfling"
+  ],
+  "racial_traits": [
+    "+1 size bonus to AC, +1 size bonus on attack rolls, +4 size bonus on Hide checks",
+    "+2 racial bonus on Climb, Jump, and Move Silently checks",
+    "+1 racial bonus on all saving throws",
+    "+2 morale bonus on saves against fear (stacks with the +1 general save bonus)",
+    "+1 racial bonus on attack rolls with thrown weapons and slings",
+    "+2 racial bonus on Listen checks"
+  ],
+  "favored_class": "Rogue",
+  "special_abilities": []
+}

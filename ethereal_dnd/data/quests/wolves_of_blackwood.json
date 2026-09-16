@@ -1,0 +1,19 @@
+{
+  "id": "wolves_of_blackwood",
+  "title": "Wolves of Blackwood",
+  "description": "Old Mabel wants the wolf packs harassing the Blackwood road driven off.",
+  "giver_id": "mabel_innkeeper",
+  "objectives": [
+    {
+      "type": "kill",
+      "description": "Clear the wolf pack menacing travelers on the Blackwood road.",
+      "done": false
+    }
+  ],
+  "requirements": [],
+  "rewards": {
+    "gold": 50,
+    "experience": 100
+  },
+  "failure_conditions": []
+}

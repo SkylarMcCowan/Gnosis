@@ -1,0 +1,40 @@
+{
+  "id": "boran_blacksmith",
+  "name": "Boran Ironhand",
+  "role": "blacksmith",
+  "location_id": "ravenhollow",
+  "npc_class": "warrior",
+  "npc_level": 4,
+  "ability_scores": {
+    "STR": 16,
+    "DEX": 11,
+    "CON": 14,
+    "INT": 10,
+    "WIS": 12,
+    "CHA": 9
+  },
+  "personality": "A retired adventurer who traded his sword for a hammer, but still knows a good blade when he forges one.",
+  "faction_id": null,
+  "goals": [
+    "Keep the forge running",
+    "Never pick up a sword in anger again"
+  ],
+  "rumors": [
+    {
+      "text": "The old ruins may contain treasure.",
+      "quest_id": null
+    }
+  ],
+  "stock": [
+    "longsword",
+    "short_sword",
+    "greataxe",
+    "mace_light",
+    "mace_heavy",
+    "leather",
+    "studded_leather",
+    "chain_shirt",
+    "buckler",
+    "heavy_steel_shield"
+  ]
+}

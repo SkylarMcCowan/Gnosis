@@ -1,0 +1,33 @@
+{
+  "id": "warrior",
+  "name": "Warrior (NPC)",
+  "hit_die": 8,
+  "base_attack_progression": "good",
+  "save_progression": {
+    "fortitude": "good",
+    "reflex": "poor",
+    "will": "poor"
+  },
+  "class_skills": [
+    "climb",
+    "handle_animal",
+    "intimidate",
+    "jump",
+    "ride",
+    "swim"
+  ],
+  "skill_points_per_level": 2,
+  "weapon_proficiencies": [
+    "simple",
+    "martial"
+  ],
+  "armor_proficiencies": [
+    "light",
+    "medium",
+    "heavy",
+    "shield_including_tower"
+  ],
+  "class_features": [],
+  "spellcasting": null,
+  "alignment_restriction": []
+}

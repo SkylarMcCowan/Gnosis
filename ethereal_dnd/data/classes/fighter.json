@@ -1,0 +1,36 @@
+{
+  "id": "fighter",
+  "name": "Fighter",
+  "hit_die": 10,
+  "base_attack_progression": "good",
+  "save_progression": {
+    "fortitude": "good",
+    "reflex": "poor",
+    "will": "poor"
+  },
+  "class_skills": [
+    "climb",
+    "craft",
+    "handle_animal",
+    "intimidate",
+    "jump",
+    "ride",
+    "swim"
+  ],
+  "skill_points_per_level": 2,
+  "weapon_proficiencies": [
+    "simple",
+    "martial"
+  ],
+  "armor_proficiencies": [
+    "light",
+    "medium",
+    "heavy",
+    "shield_including_tower"
+  ],
+  "class_features": [
+    "bonus_feat"
+  ],
+  "spellcasting": null,
+  "alignment_restriction": []
+}

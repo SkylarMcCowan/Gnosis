@@ -26,9 +26,9 @@ if __name__ == "__main__":
 try:
     from PyQt6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-        QTextEdit, QPushButton, QLabel, QComboBox, QScrollArea,
+        QTextEdit, QTextBrowser, QPushButton, QLabel, QComboBox, QScrollArea,
         QFrame, QMessageBox, QStatusBar, QStackedLayout, QDialog, QLineEdit,
-        QFileDialog, QRadioButton, QButtonGroup, QListWidget, QStackedWidget,
+        QFileDialog, QRadioButton, QButtonGroup, QListWidget, QListWidgetItem, QStackedWidget,
         QSplitter, QTabWidget
     )
     from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer, QRectF, QObject
@@ -41,11 +41,13 @@ except ModuleNotFoundError as e:
 
 import json
 import math
+import re
 
 import webagent
 import agent_dialogue
 import code_review
 from core import config as core_config
+from core import models as core_models
 from games.zuma_endless import ZumaEndlessWidget
 from games.solitaire import SolitaireWidget
 from games.sudoku import SudokuWidget, DIFFICULTIES as SUDOKU_DIFFICULTIES
@@ -54,9 +56,20 @@ from games.tetris import TetrisWidget
 from games.hangman import HangmanWidget, CATEGORIES as HANGMAN_CATEGORIES
 from games.idle_island import IdleIslandWidget
 from games.cozy_world import CozyWorldWidget
+from games.neon_racer import NeonRacerWidget
+from games.minesweeper import MinesweeperWidget, DIFFICULTIES as MINESWEEPER_DIFFICULTIES
+from games.mastermind import MastermindWidget, DIFFICULTIES as MASTERMIND_DIFFICULTIES
+from games.nonogram import NonogramWidget, PATTERNS as NONOGRAM_PATTERNS
+from games.slider_puzzle import SliderPuzzleWidget, DIFFICULTIES as SLIDER_DIFFICULTIES
 from worklog import WorklogWidget
+from weather_station import WeatherStationWidget
+from stocks_tracker import StocksTrackerWidget
+from radio import RadioWidget
 from content_builder import LinkedInBlogBuilderWidget
 from hacker import HackerWidget
+from ethereal_dnd_widget import EtherealDndWidget
+from penpot_studio import PenpotStudioWidget
+from converter import ConverterWidget
 from core import subscriptions
 from core.activity_log import load_activity, clear_activity
 from memory.experience import load_experiences
@@ -99,22 +112,51 @@ CHAT_BG_TRANSLUCENT = f"""
 """
 
 
+class _ResponseCancelled(Exception):
+    """Raised from inside a chunk/status callback to unwind out of
+    webagent.chat_response when the user asked to stop - distinct from a
+    real error so ResponseWorker can tell the two apart."""
+
+
 class ResponseWorker(QThread):
     """Worker thread for handling AI responses"""
     response_chunk = pyqtSignal(str)  # Emits each chunk as it arrives
     response_ready = pyqtSignal(str)  # Emits complete response
     error_occurred = pyqtSignal(str)
+    cancelled = pyqtSignal()  # A deliberate user-initiated stop, not an error
     finished = pyqtSignal()
     status = pyqtSignal(str)  # Emits short progress text ("Searching the web...") between send and reply
+    sources = pyqtSignal(list)  # Emits the raw evidence list when web search/Deep Think actually ran
 
     def __init__(self, user_input):
         super().__init__()
         self.user_input = user_input
+        self._cancel_requested = False
+
+    def cancel(self):
+        """Best-effort: takes effect the next time the running turn checks
+        in (a status update or a streamed chunk), not necessarily instantly -
+        there's no lower-level abort signal into the Ollama call itself."""
+        self._cancel_requested = True
 
     def run(self):
+        def guarded_chunk(text):
+            if self._cancel_requested:
+                raise _ResponseCancelled()
+            self.response_chunk.emit(text)
+
+        def guarded_status(text):
+            if self._cancel_requested:
+                raise _ResponseCancelled()
+            self.status.emit(text)
+
         try:
-            response = webagent.chat_response(self.user_input, self.response_chunk.emit, self.status.emit)
+            response = webagent.chat_response(
+                self.user_input, guarded_chunk, guarded_status, on_sources=self.sources.emit,
+            )
             self.response_ready.emit(response)
+        except _ResponseCancelled:
+            self.cancelled.emit()
         except Exception as e:
             self.error_occurred.emit(f"Error: {str(e)}")
         finally:
@@ -593,6 +635,8 @@ class WebAgentGUI(QMainWindow):
         self.response_worker = None
         self.current_response = ""
         self.assistant_message_started = False
+        self._pending_sources = None
+        self._warmup_workers = []
 
         self.clarify_bridge = ClarifyBridge(self)
         agent_dialogue.set_ui_asker(self.clarify_bridge.ask)
@@ -612,7 +656,9 @@ class WebAgentGUI(QMainWindow):
         for widget in (
             self.zuma_widget, self.solitaire_widget, self.sudoku_widget,
             self.mystery_widget, self.tetris_widget, self.hangman_widget,
-            self.idle_island_widget, self.cozy_world_widget,
+            self.idle_island_widget, self.cozy_world_widget, self.neon_racer_widget,
+            self.minesweeper_widget, self.mastermind_widget, self.nonogram_widget,
+            self.slider_puzzle_widget,
         ):
             widget.save_now()
         self.hacker_widget.stop_and_cleanup()
@@ -644,8 +690,9 @@ class WebAgentGUI(QMainWindow):
         self.nav_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         for label in (
             "💬  Chat", "🔄  Self-Improve", "📊  Report", "📦  Proposals", "🧠  Knowledge",
-            "🔔  Subscriptions", "🎮  Games", "🏝️  Idle Island", "🗂️  Work Tracker",
-            "📝  LinkedIn/Blog", "🕵️  Hacker", "🏕️  Cozy World",
+            "🔔  Subscriptions", "🎮  Games", "🗂️  Work Tracker", "🌦️  Weather Station", "📈  Stocks Tracker", "📻  Radio",
+            "📝  LinkedIn/Blog", "🕵️  Hacker", "🏕️  Cozy World", "🐉  Ethereal DND", "🎨  Penpot Studio",
+            "🔁  Converter",
         ):
             self.nav_list.addItem(label)
         root_layout.addWidget(self.nav_list)
@@ -660,16 +707,26 @@ class WebAgentGUI(QMainWindow):
         self.pages.addWidget(self._build_knowledge_page())
         self.pages.addWidget(self._build_subscriptions_page())
         self.pages.addWidget(self._build_games_page())
-        self.idle_island_widget = IdleIslandWidget()
-        self.pages.addWidget(self.idle_island_widget)
         self.worklog_widget = WorklogWidget()
         self.pages.addWidget(self.worklog_widget)
+        self.weather_station_widget = WeatherStationWidget()
+        self.pages.addWidget(self.weather_station_widget)
+        self.stocks_tracker_widget = StocksTrackerWidget()
+        self.pages.addWidget(self.stocks_tracker_widget)
+        self.radio_widget = RadioWidget()
+        self.pages.addWidget(self.radio_widget)
         self.content_builder_widget = LinkedInBlogBuilderWidget()
         self.pages.addWidget(self.content_builder_widget)
         self.hacker_widget = HackerWidget()
         self.pages.addWidget(self.hacker_widget)
         self.cozy_world_widget = CozyWorldWidget()
         self.pages.addWidget(self.cozy_world_widget)
+        self.ethereal_dnd_widget = EtherealDndWidget()
+        self.pages.addWidget(self.ethereal_dnd_widget)
+        self.penpot_studio_widget = PenpotStudioWidget()
+        self.pages.addWidget(self.penpot_studio_widget)
+        self.converter_widget = ConverterWidget()
+        self.pages.addWidget(self.converter_widget)
 
         self.nav_list.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.nav_list.setCurrentRow(0)
@@ -691,9 +748,44 @@ class WebAgentGUI(QMainWindow):
         stack.addWidget(central_widget)
         stack.setCurrentWidget(central_widget)
 
-        main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(15, 15, 15, 15)
+        outer_layout = QHBoxLayout(central_widget)
+        outer_layout.setContentsMargins(15, 15, 15, 15)
+        outer_layout.setSpacing(10)
+
+        # Conversation sidebar - lets you switch between saved conversations
+        # or start a new one without losing the current one.
+        self.current_conversation_file = None
+        self.conversation_saved_length = len(webagent.context.assistant_convo)
+
+        convo_panel = QFrame()
+        convo_panel.setObjectName("convoPanel")
+        convo_panel.setFixedWidth(200)
+        convo_layout = QVBoxLayout(convo_panel)
+        convo_layout.setContentsMargins(8, 8, 8, 8)
+        convo_layout.setSpacing(6)
+
+        convo_header_row = QHBoxLayout()
+        convo_title_label = QLabel("Conversations")
+        convo_title_label.setObjectName("mutedLabel")
+        convo_header_row.addWidget(convo_title_label)
+        convo_header_row.addStretch()
+        new_convo_button = QPushButton("🆕")
+        new_convo_button.setMaximumWidth(32)
+        new_convo_button.setToolTip("Start a new conversation")
+        new_convo_button.clicked.connect(self.new_conversation_action)
+        convo_header_row.addWidget(new_convo_button)
+        convo_layout.addLayout(convo_header_row)
+
+        self.conversation_list = QListWidget()
+        self.conversation_list.setObjectName("conversationList")
+        self.conversation_list.itemClicked.connect(self.load_selected_conversation)
+        convo_layout.addWidget(self.conversation_list)
+
+        outer_layout.addWidget(convo_panel)
+
+        main_layout = QVBoxLayout()
         main_layout.setSpacing(10)
+        outer_layout.addLayout(main_layout, 1)
 
         # Header - one toolbar panel, two organized rows (title/agent/actions,
         # then mode toggles as pills) instead of the two separately-bordered
@@ -729,6 +821,17 @@ class WebAgentGUI(QMainWindow):
         self.current_agent_label = QLabel("Current: default")
         self.current_agent_label.setObjectName("mutedLabel")
         title_row.addWidget(self.current_agent_label)
+
+        title_row.addWidget(QLabel("Model:"))
+        self.model_combo = QComboBox()
+        self.model_combo.setToolTip(
+            "Pick a specific local Ollama model to use for every chat message, "
+            "overriding the mode toggles below. 'Auto' restores mode-based selection "
+            "(Web/Think/Unfiltered/Code)."
+        )
+        self._populate_model_combo()
+        self.model_combo.currentIndexChanged.connect(self.set_model_override)
+        title_row.addWidget(self.model_combo)
 
         diff_review_button = QPushButton("📋 Diff Review")
         diff_review_button.setToolTip(
@@ -807,9 +910,10 @@ class WebAgentGUI(QMainWindow):
         main_layout.addWidget(header_frame)
 
         # Chat display area - conversational style
-        self.chat_display = QTextEdit()
+        self.chat_display = QTextBrowser()
         self.chat_display.setObjectName("chatDisplay")
         self.chat_display.setReadOnly(True)
+        self.chat_display.setOpenExternalLinks(True)
         main_layout.addWidget(self.chat_display)
 
         # Transient status line ("Searching the web...", "Verifying facts...")
@@ -830,12 +934,12 @@ class WebAgentGUI(QMainWindow):
         self.input_text.installEventFilter(self)
         input_layout.addWidget(self.input_text)
 
-        send_button = QPushButton("Send")
-        send_button.setObjectName("sendButton")
-        send_button.setMaximumWidth(80)
-        send_button.setMinimumHeight(50)
-        send_button.clicked.connect(self.send_message)
-        input_layout.addWidget(send_button)
+        self.send_button = QPushButton("Send")
+        self.send_button.setObjectName("sendButton")
+        self.send_button.setMaximumWidth(80)
+        self.send_button.setMinimumHeight(50)
+        self.send_button.clicked.connect(self.on_send_button_clicked)
+        input_layout.addWidget(self.send_button)
 
         main_layout.addLayout(input_layout)
 
@@ -844,6 +948,8 @@ class WebAgentGUI(QMainWindow):
         hint_label.setObjectName("mutedLabel")
         hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(hint_label)
+
+        self._refresh_conversation_list()
 
         return central_wrapper
 
@@ -1373,6 +1479,140 @@ class WebAgentGUI(QMainWindow):
         hangman_layout.addStretch()
         tabs.addTab(hangman_page, "Hangman")
 
+        idle_island_page = QWidget()
+        idle_island_layout = QVBoxLayout(idle_island_page)
+        self.idle_island_widget = IdleIslandWidget()
+        idle_island_layout.addWidget(self.idle_island_widget)
+        tabs.addTab(idle_island_page, "Idle Island")
+
+        racer_page = QWidget()
+        racer_layout = QVBoxLayout(racer_page)
+        racer_layout.addWidget(self._muted_label(
+            "Neon Racer - anti-gravity racing, Wipeout-style. W/Up thrust, S/Down brake, "
+            "A/D or arrow keys to steer, Space to power-slide through corners. Grab the "
+            "glowing speed pads and stay off the walls across 3 laps against 3 rivals."
+        ))
+        racer_row = QHBoxLayout()
+        racer_row.addStretch()
+        self.neon_racer_widget = NeonRacerWidget()
+        racer_row.addWidget(self.neon_racer_widget)
+        racer_row.addStretch()
+        racer_layout.addLayout(racer_row)
+        racer_layout.addStretch()
+        tabs.addTab(racer_page, "Neon Racer")
+
+        minesweeper_page = QWidget()
+        minesweeper_layout = QVBoxLayout(minesweeper_page)
+        minesweeper_layout.addWidget(self._muted_label(
+            "Minesweeper - left click to reveal a cell, right click to flag a suspected mine. "
+            "Click a satisfied revealed number to clear its remaining neighbors at once."
+        ))
+        minesweeper_controls = QHBoxLayout()
+        minesweeper_controls.addWidget(QLabel("Difficulty:"))
+        self.minesweeper_difficulty_combo = QComboBox()
+        self.minesweeper_difficulty_combo.addItems(list(MINESWEEPER_DIFFICULTIES.keys()))
+        self.minesweeper_difficulty_combo.setCurrentText("Beginner")
+        minesweeper_controls.addWidget(self.minesweeper_difficulty_combo)
+        minesweeper_new_game_button = QPushButton("New Game")
+        minesweeper_new_game_button.clicked.connect(
+            lambda: self.minesweeper_widget._new_game(self.minesweeper_difficulty_combo.currentText())
+        )
+        minesweeper_controls.addWidget(minesweeper_new_game_button)
+        minesweeper_controls.addStretch()
+        minesweeper_layout.addLayout(minesweeper_controls)
+        minesweeper_row = QHBoxLayout()
+        minesweeper_row.addStretch()
+        self.minesweeper_widget = MinesweeperWidget()
+        minesweeper_row.addWidget(self.minesweeper_widget)
+        minesweeper_row.addStretch()
+        minesweeper_layout.addLayout(minesweeper_row)
+        minesweeper_layout.addStretch()
+        tabs.addTab(minesweeper_page, "Minesweeper")
+
+        mastermind_page = QWidget()
+        mastermind_layout = QVBoxLayout(mastermind_page)
+        mastermind_layout.addWidget(self._muted_label(
+            "Mastermind - click a palette swatch then a slot to place it, Submit to lock in a "
+            "guess. Black pegs mean right color & position, white pegs mean right color only."
+        ))
+        mastermind_controls = QHBoxLayout()
+        mastermind_controls.addWidget(QLabel("Difficulty:"))
+        self.mastermind_difficulty_combo = QComboBox()
+        self.mastermind_difficulty_combo.addItems(list(MASTERMIND_DIFFICULTIES.keys()))
+        self.mastermind_difficulty_combo.setCurrentText("Standard")
+        mastermind_controls.addWidget(self.mastermind_difficulty_combo)
+        mastermind_new_game_button = QPushButton("New Game")
+        mastermind_new_game_button.clicked.connect(
+            lambda: self.mastermind_widget._new_game(self.mastermind_difficulty_combo.currentText())
+        )
+        mastermind_controls.addWidget(mastermind_new_game_button)
+        mastermind_controls.addStretch()
+        mastermind_layout.addLayout(mastermind_controls)
+        mastermind_row = QHBoxLayout()
+        mastermind_row.addStretch()
+        self.mastermind_widget = MastermindWidget()
+        mastermind_row.addWidget(self.mastermind_widget)
+        mastermind_row.addStretch()
+        mastermind_layout.addLayout(mastermind_row)
+        mastermind_layout.addStretch()
+        tabs.addTab(mastermind_page, "Mastermind")
+
+        nonogram_page = QWidget()
+        nonogram_layout = QVBoxLayout(nonogram_page)
+        nonogram_layout.addWidget(self._muted_label(
+            "Nonogram - fill cells using the row/column clues until the picture appears. Left "
+            "click to fill, right click to mark a cell as definitely empty."
+        ))
+        nonogram_controls = QHBoxLayout()
+        nonogram_controls.addWidget(QLabel("Picture:"))
+        self.nonogram_pattern_combo = QComboBox()
+        self.nonogram_pattern_combo.addItems(["Random"] + list(NONOGRAM_PATTERNS.keys()))
+        self.nonogram_pattern_combo.setCurrentText("Random")
+        nonogram_controls.addWidget(self.nonogram_pattern_combo)
+        nonogram_new_game_button = QPushButton("New Puzzle")
+        nonogram_new_game_button.clicked.connect(
+            lambda: self.nonogram_widget._new_game(self.nonogram_pattern_combo.currentText())
+        )
+        nonogram_controls.addWidget(nonogram_new_game_button)
+        nonogram_controls.addStretch()
+        nonogram_layout.addLayout(nonogram_controls)
+        nonogram_row = QHBoxLayout()
+        nonogram_row.addStretch()
+        self.nonogram_widget = NonogramWidget()
+        nonogram_row.addWidget(self.nonogram_widget)
+        nonogram_row.addStretch()
+        nonogram_layout.addLayout(nonogram_row)
+        nonogram_layout.addStretch()
+        tabs.addTab(nonogram_page, "Nonogram")
+
+        slider_puzzle_page = QWidget()
+        slider_puzzle_layout = QVBoxLayout(slider_puzzle_page)
+        slider_puzzle_layout.addWidget(self._muted_label(
+            "Slider Puzzle - slide tiles into the empty slot to put them back in numeric "
+            "order. Click a tile next to the empty slot, or use the arrow keys."
+        ))
+        slider_puzzle_controls = QHBoxLayout()
+        slider_puzzle_controls.addWidget(QLabel("Size:"))
+        self.slider_puzzle_difficulty_combo = QComboBox()
+        self.slider_puzzle_difficulty_combo.addItems(list(SLIDER_DIFFICULTIES.keys()))
+        self.slider_puzzle_difficulty_combo.setCurrentText("4x4 (15-puzzle)")
+        slider_puzzle_controls.addWidget(self.slider_puzzle_difficulty_combo)
+        slider_puzzle_new_game_button = QPushButton("New Shuffle")
+        slider_puzzle_new_game_button.clicked.connect(
+            lambda: self.slider_puzzle_widget._new_game(self.slider_puzzle_difficulty_combo.currentText())
+        )
+        slider_puzzle_controls.addWidget(slider_puzzle_new_game_button)
+        slider_puzzle_controls.addStretch()
+        slider_puzzle_layout.addLayout(slider_puzzle_controls)
+        slider_puzzle_row = QHBoxLayout()
+        slider_puzzle_row.addStretch()
+        self.slider_puzzle_widget = SliderPuzzleWidget()
+        slider_puzzle_row.addWidget(self.slider_puzzle_widget)
+        slider_puzzle_row.addStretch()
+        slider_puzzle_layout.addLayout(slider_puzzle_row)
+        slider_puzzle_layout.addStretch()
+        tabs.addTab(slider_puzzle_page, "Slider Puzzle")
+
         return page
 
     def _build_collapsible_section(self, title, content, expanded=True):
@@ -1570,24 +1810,35 @@ class WebAgentGUI(QMainWindow):
                 return True
         return super().eventFilter(source, event)
     
+    def on_send_button_clicked(self):
+        """The Send button doubles as Stop while a response is running."""
+        if self.response_worker is not None and self.response_worker.isRunning():
+            self.response_worker.cancel()
+            self.send_button.setEnabled(False)
+            self.chat_status_label.setText("Stopping...")
+        else:
+            self.send_message()
+
     def send_message(self):
         """Send user message and get AI response"""
         user_input = self.input_text.toPlainText().strip()
-        
+
         if not user_input:
             QMessageBox.warning(self, "Empty Input", "Please enter a message.")
             return
-        
+
         # Display user message
         self.display_message(user_input, is_user=True)
         self.input_text.clear()
-        
+
         # Disable input while processing
         self.input_text.setEnabled(False)
-        
+        self.send_button.setText("Stop")
+
         # Initialize streaming response placeholder
         self.current_response = ""
         self.assistant_message_started = False
+        self._pending_sources = None
         self.response_start_time = datetime.now()
         self.chat_status_label.setText("Thinking...")
 
@@ -1596,8 +1847,10 @@ class WebAgentGUI(QMainWindow):
         self.response_worker.response_chunk.connect(self.on_response_chunk)
         self.response_worker.response_ready.connect(self.on_response_ready)
         self.response_worker.error_occurred.connect(self.on_error)
+        self.response_worker.cancelled.connect(self.on_response_cancelled)
         self.response_worker.finished.connect(self.on_response_finished)
         self.response_worker.status.connect(self.on_chat_status)
+        self.response_worker.sources.connect(self.on_sources)
         self.response_worker.start()
 
     def on_chat_status(self, message):
@@ -1645,11 +1898,73 @@ class WebAgentGUI(QMainWindow):
         # Response already displayed via streaming, just reset state
         self.current_response = ""
 
+        # None means this wasn't a research turn (say nothing); [] means
+        # web search/Deep Think ran and found nothing real - render that
+        # distinctly rather than silently, which is the whole point of this.
+        if self._pending_sources is not None:
+            self._render_sources(self._pending_sources)
+            self._pending_sources = None
+
+    def on_sources(self, sources):
+        """Buffers the evidence list for this turn. Fires before the assistant
+        bubble opens (research happens before the model call starts streaming),
+        so rendering immediately here would place it above the answer instead
+        of under it - on_response_ready renders the buffered value once the
+        bubble is closed."""
+        self._pending_sources = sources
+
+    def _render_sources(self, sources):
+        cursor = self.chat_display.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+
+        if not sources:
+            cursor.insertHtml(
+                f'<div style="margin: 2px 0 14px 0; font-size: 12px; color: {TEXT_MUTED};">'
+                f'⚠️ No live web results for this answer - it is not backed by fresh search data.</div>'
+            )
+            self.chat_display.setTextCursor(cursor)
+            return
+
+        items = []
+        for result in sources[:8]:
+            title = html.escape(str(result.get('title') or result.get('url') or 'Source'))
+            url = result.get('url') or ''
+            confidence = result.get('truthfulness_confidence')
+            conf_text = f' (confidence {confidence}/100)' if isinstance(confidence, (int, float)) else ''
+            if url:
+                items.append(f'<li><a href="{html.escape(url)}" style="color: {ACCENT_LIGHT};">{title}</a>{conf_text}</li>')
+            else:
+                items.append(f'<li>{title}{conf_text}</li>')
+
+        cursor.insertHtml(
+            f'<div style="margin: 2px 0 14px 0; font-size: 12px; color: {TEXT_SECONDARY};">'
+            f'<b>Sources:</b><ul style="margin: 4px 0 0 0; padding-left: 18px;">{"".join(items)}</ul></div>'
+        )
+        self.chat_display.setTextCursor(cursor)
+
     def on_response_finished(self):
-        """Handle response completion"""
+        """Handle response completion - always fires (success, error, or a
+        user-initiated stop), so this is the one place that resets the
+        Send/Stop button regardless of how the turn ended."""
         self.chat_status_label.setText("")
         self.input_text.setEnabled(True)
         self.input_text.setFocus()
+        self.send_button.setText("Send")
+        self.send_button.setEnabled(True)
+
+    def on_response_cancelled(self):
+        """A deliberate, user-initiated stop - distinct from on_error so it
+        doesn't pop an alarming error dialog for something the user asked
+        for. Whatever streamed before the stop stays on screen."""
+        cursor = self.chat_display.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        if self.assistant_message_started:
+            cursor.insertHtml('</div></div>')
+        cursor.insertHtml(
+            f'<div style="margin: 0 0 14px 0; font-size: 12px; color: {TEXT_MUTED}; font-style: italic;">Stopped.</div>'
+        )
+        self.chat_display.setTextCursor(cursor)
+        self.current_response = ""
 
     def on_error(self, error_msg):
         """Handle errors"""
@@ -1667,15 +1982,54 @@ class WebAgentGUI(QMainWindow):
         else:
             self.agent_combo.setCurrentText("default")
 
+    def _populate_model_combo(self):
+        """Fill the model picker with every locally-installed Ollama model,
+        'Auto' first so mode-based selection (_selected_model()) stays the
+        default with nothing selected."""
+        self.model_combo.blockSignals(True)
+        self.model_combo.clear()
+        self.model_combo.addItem("Auto (mode-based)")
+        for tag in core_models.list_installed():
+            self.model_combo.addItem(tag)
+        self.model_combo.blockSignals(False)
+
+    def set_model_override(self, index):
+        if index <= 0:
+            webagent.context.selected_model = None
+        else:
+            webagent.context.selected_model = self.model_combo.currentText()
+        self._prewarm_model_for_current_modes()
+
     def toggle_unfiltered_mode(self, checked):
         if checked:
             self.coding_check.setChecked(False)
         webagent.context.unfiltered_mode = checked
+        self._prewarm_model_for_current_modes()
 
     def toggle_coding_mode(self, checked):
         if checked:
             self.unfiltered_check.setChecked(False)
         webagent.context.coding_mode = checked
+        self._prewarm_model_for_current_modes()
+
+    def _prewarm_model_for_current_modes(self):
+        """Best-effort background load of whichever model the active mode
+        toggles now resolve to, so switching modes doesn't pay a multi-
+        second cold-load cost on the next real message - confirmed live
+        that 'main' and 'unfiltered'/'coding' are different model files.
+        Fire-and-forget: a failed or slow warmup just means no speedup this
+        time, not a wrong answer, so there's nothing here worth surfacing."""
+        if webagent.ollama is None:
+            return
+        model_name = webagent._selected_model()
+        worker = CycleWorker(lambda: webagent.model_chat(model=model_name, messages=[]))
+        self._warmup_workers.append(worker)
+
+        def _cleanup():
+            if worker in self._warmup_workers:
+                self._warmup_workers.remove(worker)
+        worker.finished.connect(_cleanup)
+        worker.start()
 
     def open_diff_review(self):
         dialog = DiffReviewDialog(self)
@@ -1726,7 +2080,93 @@ class WebAgentGUI(QMainWindow):
         if reply == QMessageBox.StandardButton.Yes:
             self.chat_display.clear()
             webagent.new_conversation(save_current=False)
-    
+            self.current_conversation_file = None
+            self.conversation_saved_length = len(webagent.context.assistant_convo)
+            self._refresh_conversation_list()
+
+    def _has_unsaved_messages(self):
+        """True if the active conversation has content that hasn't been written to disk yet -
+        either a brand-new conversation, or a loaded one with messages added since."""
+        convo_length = len(webagent.context.assistant_convo)
+        if convo_length <= 1:
+            return False
+        return convo_length != self.conversation_saved_length
+
+    def _refresh_conversation_list(self):
+        """Repopulate the sidebar from disk and re-select the active conversation, if any."""
+        self.conversation_list.clear()
+        for fname in webagent.list_conversations():
+            label = fname[:-5] if fname.endswith(".json") else fname
+            # Strip the trailing _YYYYMMDD_HHMMSS save-time stamp and turn the
+            # sanitized underscores back into spaces - the stamp still lives
+            # in the real filename (sorting/uniqueness), just not the label.
+            label = re.sub(r"_\d{8}_\d{6}$", "", label).replace("_", " ") or label
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, fname)
+            self.conversation_list.addItem(item)
+            if fname == self.current_conversation_file:
+                self.conversation_list.setCurrentItem(item)
+
+    def _repaint_chat_from_history(self):
+        self.chat_display.clear()
+        for msg in webagent.context.assistant_convo:
+            role = msg.get("role")
+            if role not in ("user", "assistant"):
+                continue
+            self.display_message(msg.get("content", ""), is_user=(role == "user"))
+            if role == "assistant" and "sources" in msg:
+                self._render_sources(msg["sources"])
+
+    def new_conversation_action(self):
+        """Start a fresh conversation, offering to save the current one first if it has
+        unsaved content."""
+        if self._has_unsaved_messages():
+            reply = QMessageBox.question(
+                self,
+                "Unsaved Conversation",
+                "Save the current conversation before starting a new one?",
+                QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+            )
+            if reply == QMessageBox.StandardButton.Cancel:
+                return
+            webagent.new_conversation(save_current=(reply == QMessageBox.StandardButton.Save))
+        else:
+            webagent.new_conversation(save_current=False)
+
+        self.current_conversation_file = None
+        self.conversation_saved_length = len(webagent.context.assistant_convo)
+        self.chat_display.clear()
+        self._refresh_conversation_list()
+
+    def load_selected_conversation(self, item):
+        fname = item.data(Qt.ItemDataRole.UserRole)
+        if fname == self.current_conversation_file:
+            return
+
+        if self._has_unsaved_messages():
+            reply = QMessageBox.question(
+                self,
+                "Unsaved Conversation",
+                "Save the current conversation before switching?",
+                QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+            )
+            if reply == QMessageBox.StandardButton.Cancel:
+                self._refresh_conversation_list()
+                return
+            if reply == QMessageBox.StandardButton.Save:
+                webagent.save_conversation()
+
+        path = webagent.load_conversation(fname)
+        if not path:
+            QMessageBox.critical(self, "Load Failed", f"Could not load conversation:\n{fname}")
+            self._refresh_conversation_list()
+            return
+
+        self.current_conversation_file = fname
+        self.conversation_saved_length = len(webagent.context.assistant_convo)
+        self._repaint_chat_from_history()
+        self._refresh_conversation_list()
+
     def toggle_voice_mode(self, checked):
         """Toggle voice input mode"""
         webagent.context.voice_mode = checked

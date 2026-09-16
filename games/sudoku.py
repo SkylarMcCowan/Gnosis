@@ -15,6 +15,7 @@ from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import QWidget
 
 from core import config as core_config
+from games.start_screen import consume_start_input, draw_start_screen
 
 CELL = 52
 GRID_SIZE = CELL * 9
@@ -136,6 +137,7 @@ class SudokuWidget(QWidget):
             self._restore_from_save(saved)
         else:
             self._new_game()
+        self.started = False  # gated by a start screen - see games/start_screen.py
 
         self.autosave_timer = QTimer(self)
         self.autosave_timer.timeout.connect(self.save_now)
@@ -230,6 +232,8 @@ class SudokuWidget(QWidget):
         return None
 
     def mousePressEvent(self, event):
+        if consume_start_input(self):
+            return
         if self.solved or self.failed:
             return
         hit = self._cell_at(event.position().toPoint())
@@ -237,6 +241,8 @@ class SudokuWidget(QWidget):
         self.update()
 
     def keyPressEvent(self, event):
+        if consume_start_input(self):
+            return
         if self.solved or self.failed:
             return
         if self.selected is None:
@@ -287,7 +293,13 @@ class SudokuWidget(QWidget):
         self._draw_grid_lines(painter)
         self._draw_numbers(painter)
         self._draw_hud(painter)
-        if self.solved:
+        if not self.started:
+            draw_start_screen(painter, self.rect(), "Sudoku", [
+                "Click a cell and type 1-9, Backspace to clear, arrow keys to move.",
+                f"{MAX_MISTAKES} mistakes and it's game over.",
+                "Click or press any key to begin.",
+            ])
+        elif self.solved:
             self._draw_solved(painter)
         elif self.failed:
             self._draw_failed(painter)

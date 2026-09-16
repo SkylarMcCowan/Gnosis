@@ -24,6 +24,7 @@ class Context:
         self.deep_think_mode = False    # evidence-led, structured research synthesis
         self.unfiltered_mode = False    # Toggle for unfiltered model mode
         self.coding_mode = False        # Toggle for coding model mode
+        self.selected_model = None      # explicit local-model override (Ollama tag); None means fall back to mode-based selection
         self.status_callback = None     # optional callable(str), set for the duration of one chat_response() call so a UI (the GUI's status label) can show what's happening; None means nothing is listening
 
 

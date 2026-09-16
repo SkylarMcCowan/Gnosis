@@ -42,14 +42,17 @@ def test_initial_web_search_checkbox_reflects_context(gui):
     assert gui.web_search_check.isChecked() == webagent.context.web_search_mode
 
 
-def test_toggle_unfiltered_mode_updates_context(gui):
+def test_toggle_unfiltered_mode_updates_context(gui, fake_ollama_chat):
+    # fake_ollama_chat: these toggles now also fire a background model
+    # pre-warm (_prewarm_model_for_current_modes) - without this, the test
+    # made a real, slow Ollama call instead of a fast, hermetic one.
     gui.toggle_unfiltered_mode(True)
     assert webagent.context.unfiltered_mode is True
     gui.toggle_unfiltered_mode(False)
     assert webagent.context.unfiltered_mode is False
 
 
-def test_toggle_coding_mode_updates_context(gui):
+def test_toggle_coding_mode_updates_context(gui, fake_ollama_chat):
     gui.toggle_coding_mode(True)
     assert webagent.context.coding_mode is True
 

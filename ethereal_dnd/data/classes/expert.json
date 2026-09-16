@@ -1,0 +1,22 @@
+{
+  "id": "expert",
+  "name": "Expert (NPC)",
+  "hit_die": 6,
+  "base_attack_progression": "average",
+  "save_progression": {
+    "fortitude": "poor",
+    "reflex": "poor",
+    "will": "good"
+  },
+  "class_skills": [],
+  "skill_points_per_level": 6,
+  "weapon_proficiencies": [
+    "simple"
+  ],
+  "armor_proficiencies": [
+    "light"
+  ],
+  "class_features": [],
+  "spellcasting": null,
+  "alignment_restriction": []
+}

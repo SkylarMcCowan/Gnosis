@@ -1,0 +1,10 @@
+{
+  "id": "sleight_of_hand",
+  "name": "Sleight of Hand",
+  "key_ability": "DEX",
+  "trained_only": true,
+  "armor_check_penalty": true,
+  "class_skill_by_class": [
+    "rogue"
+  ]
+}

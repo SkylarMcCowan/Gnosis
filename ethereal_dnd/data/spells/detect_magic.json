@@ -1,0 +1,23 @@
+{
+  "id": "detect_magic",
+  "name": "Detect Magic",
+  "school": "Divination",
+  "levels": {
+    "cleric": 0,
+    "wizard": 0
+  },
+  "casting_time": "1 standard action",
+  "range": "60 ft.",
+  "target": null,
+  "duration": "Concentration, up to 1 min./level (D)",
+  "saving_throw": "None",
+  "spell_resistance": "No",
+  "components": [
+    "V",
+    "S"
+  ],
+  "effect_type": "utility",
+  "effect_params": {
+    "description": "Detects magical auras in a cone-shaped emanation; reveals presence (round 1), number/strength of auras (round 2), then location/school (round 3) the longer you concentrate."
+  }
+}

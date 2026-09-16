@@ -1,0 +1,264 @@
+{
+  "id": "cleric",
+  "name": "Cleric",
+  "hit_die": 8,
+  "base_attack_progression": "average",
+  "save_progression": {
+    "fortitude": "good",
+    "reflex": "poor",
+    "will": "good"
+  },
+  "class_skills": [
+    "concentration",
+    "craft",
+    "diplomacy",
+    "heal",
+    "knowledge",
+    "profession",
+    "spellcraft"
+  ],
+  "skill_points_per_level": 2,
+  "weapon_proficiencies": [
+    "simple"
+  ],
+  "armor_proficiencies": [
+    "light",
+    "medium",
+    "heavy",
+    "shield_except_tower"
+  ],
+  "class_features": [
+    "aura",
+    "spontaneous_casting",
+    "turn_or_rebuke_undead"
+  ],
+  "spellcasting": {
+    "type": "divine",
+    "key_ability": "WIS",
+    "preparation": "prepared",
+    "spells_per_day": [
+      [
+        3,
+        1
+      ],
+      [
+        4,
+        2
+      ],
+      [
+        4,
+        2,
+        1
+      ],
+      [
+        5,
+        3,
+        2
+      ],
+      [
+        5,
+        3,
+        2,
+        1
+      ],
+      [
+        5,
+        3,
+        3,
+        2
+      ],
+      [
+        6,
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        6,
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        6,
+        4,
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        6,
+        4,
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        6,
+        5,
+        4,
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        6,
+        5,
+        4,
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        6,
+        5,
+        5,
+        4,
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        6,
+        5,
+        5,
+        4,
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        6,
+        5,
+        5,
+        5,
+        4,
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        6,
+        5,
+        5,
+        5,
+        4,
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        6,
+        5,
+        5,
+        5,
+        5,
+        4,
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        6,
+        5,
+        5,
+        5,
+        5,
+        4,
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        6,
+        5,
+        5,
+        5,
+        5,
+        5,
+        4,
+        4,
+        3,
+        3
+      ],
+      [
+        6,
+        5,
+        5,
+        5,
+        5,
+        5,
+        4,
+        4,
+        4,
+        4
+      ]
+    ]
+  },
+  "alignment_restriction": [
+    {
+      "id": "cleric_deity_alignment",
+      "description": "A cleric's alignment must be within one step of his deity's, and may not be neutral unless his deity's alignment is also neutral.",
+      "scope": "class",
+      "trigger": {
+        "type": "alignment_deviation",
+        "check": "deity_relative",
+        "required_alignment": null,
+        "max_axis_deviation": 1,
+        "deity_relative": true,
+        "forbid_neutral_unless_deity_neutral": true,
+        "required_axis": null,
+        "required_value": null,
+        "forbidden_value": null,
+        "matches_event": null
+      },
+      "on_violation": {
+        "effect": "revoke_class_powers",
+        "keeps": [
+          "armor_proficiency",
+          "shield_proficiency",
+          "simple_weapon_proficiency"
+        ],
+        "restoration": "atonement"
+      }
+    },
+    {
+      "id": "cleric_code_of_conduct",
+      "description": "A cleric who grossly violates the code of conduct required by his god loses all spells and class features.",
+      "scope": "class",
+      "trigger": {
+        "type": "event_pattern",
+        "check": null,
+        "required_alignment": null,
+        "max_axis_deviation": null,
+        "deity_relative": false,
+        "forbid_neutral_unless_deity_neutral": false,
+        "required_axis": null,
+        "required_value": null,
+        "forbidden_value": null,
+        "matches_event": "BrokeCodeOfConduct"
+      },
+      "on_violation": {
+        "effect": "revoke_class_powers",
+        "keeps": [
+          "armor_proficiency",
+          "shield_proficiency",
+          "simple_weapon_proficiency"
+        ],
+        "restoration": "atonement"
+      }
+    }
+  ]
+}

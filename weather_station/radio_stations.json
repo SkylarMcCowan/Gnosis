@@ -1,0 +1,37 @@
+[
+  {
+    "id": "c99f8686",
+    "name": "KUAZ 89.1 \"Arizona Public Media\" Tucson, AZ",
+    "stream_url": "http://streaming.azpm.org/kuaz192.mp3"
+  },
+  {
+    "id": "c33a5dee",
+    "name": "Lofi 24/7",
+    "stream_url": "http://usa9.fastcast4u.com/proxy/jamz?mp=/1"
+  },
+  {
+    "id": "1cb177ec",
+    "name": "NBC News Radio",
+    "stream_url": "http://stream.revma.ihrhls.com/zc6043"
+  },
+  {
+    "id": "958a710e",
+    "name": "BBC Live News (128k)",
+    "stream_url": "http://as-hls-ww-live.akamaized.net/pool_53367543/live/ww/bbc_sounds_news/bbc_sounds_news.isml/bbc_sounds_news-audio%3d128000.norewind.m3u8"
+  },
+  {
+    "id": "963307b1",
+    "name": "English Premier League",
+    "stream_url": "http://13.54.221.214:8000/sen.mp3"
+  },
+  {
+    "id": "9f36621d",
+    "name": "# TOP 100 CLUB CHARTS - DANCE & DJ MIX RADIO - 24 HOURS NON-STOP MUSIC @ TikTok Hits, Ibiza House, Sunset Lounge, Melodic Music, EDM, Deep House, Dance Music, Techno & Hypertechno, Rave Charts, Top 40 Charts, Latin, Reggaeton Music, Moombahton, Urban Hits, HipHop, Party & Clubbing Radio, Trending Chartmusic, R&B, Urban, Mixtape - & LIVE DJ SET",
+    "stream_url": "https://breakz-2012-high.rautemusik.fm/?ref=radiobrowser-top100-clubcharts"
+  },
+  {
+    "id": "a7dba0c1",
+    "name": "#100 BEST IBIZA DEEP HOUSE",
+    "stream_url": "https://stream.zeno.fm/lwv6zqgtv1dtv"
+  }
+]

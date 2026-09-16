@@ -18,6 +18,7 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import QWidget
 
 from core import config as core_config
+from games.start_screen import consume_start_input, draw_start_screen
 
 CARD_W, CARD_H = 72, 100
 MARGIN = 24
@@ -88,6 +89,7 @@ class SolitaireWidget(QWidget):
             self._restore_from_save(saved)
         else:
             self._new_game()
+        self.started = False  # gated by a start screen - see games/start_screen.py
 
         self.autosave_timer = QTimer(self)
         self.autosave_timer.timeout.connect(self.save_now)
@@ -357,6 +359,8 @@ class SolitaireWidget(QWidget):
     # Mouse interaction
     # ------------------------------------------------------------------
     def mousePressEvent(self, event):
+        if consume_start_input(self):
+            return
         pos = event.position().toPoint()
 
         if event.button() == Qt.MouseButton.LeftButton and self._new_game_button_rect().contains(pos):
@@ -389,6 +393,8 @@ class SolitaireWidget(QWidget):
                 self._start_drag(cards, source=("tableau", col), origin_rect=self._tableau_card_rect(col, index), pos=pos)
 
     def mouseDoubleClickEvent(self, event):
+        if not self.started:
+            return
         if self.won or self.stuck:
             return
         pos = event.position().toPoint()
@@ -470,6 +476,8 @@ class SolitaireWidget(QWidget):
         self.update()
 
     def keyPressEvent(self, event):
+        if consume_start_input(self):
+            return
         if event.key() == Qt.Key.Key_Z and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             self._undo()
         elif event.key() == Qt.Key.Key_N:
@@ -542,7 +550,13 @@ class SolitaireWidget(QWidget):
                 rect = QRect(base.x(), base.y() + i * STACK_OFFSET_FACEUP, CARD_W, CARD_H)
                 self._draw_card_face(painter, card, rect)
 
-        if self.won:
+        if not self.started:
+            draw_start_screen(painter, self.rect(), "Solitaire", [
+                "Klondike - drag cards between piles, double-click to send a card to its foundation.",
+                "Ctrl+Z to undo, N for a new game.",
+                "Click or press any key to begin.",
+            ])
+        elif self.won:
             self._draw_win(painter)
         elif self.stuck:
             self._draw_stuck(painter)

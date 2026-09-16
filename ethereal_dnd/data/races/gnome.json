@@ -1,0 +1,29 @@
+{
+  "id": "gnome",
+  "name": "Gnome",
+  "ability_modifiers": {
+    "CON": 2,
+    "STR": -2
+  },
+  "size": "Small",
+  "speed": 20,
+  "languages": [
+    "Common",
+    "Gnome"
+  ],
+  "racial_traits": [
+    "+1 size bonus to AC, +1 size bonus on attack rolls, +4 size bonus on Hide checks",
+    "Low-Light Vision",
+    "Weapon Familiarity: gnome hooked hammer treated as a martial weapon",
+    "+2 racial bonus on saves against illusions",
+    "+1 racial bonus on attack rolls against kobolds and goblinoids",
+    "+4 dodge bonus to AC against monsters of the giant type",
+    "+2 racial bonus on Listen checks",
+    "+2 racial bonus on Craft (alchemy) checks"
+  ],
+  "favored_class": "Bard",
+  "special_abilities": [
+    "1/day - speak with animals (burrowing mammal only)",
+    "1/day each (if Cha 10+) - dancing lights, ghost sound, prestidigitation"
+  ]
+}

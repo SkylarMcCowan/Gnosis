@@ -1,0 +1,74 @@
+[
+  {
+    "origin_id": "ravenhollow",
+    "destination_id": "blackwood",
+    "distance_miles": 8,
+    "terrain": "forest",
+    "road_quality": "fair",
+    "danger_level": 2,
+    "base_travel_time_hours": 3
+  },
+  {
+    "origin_id": "blackwood",
+    "destination_id": "ravenhollow",
+    "distance_miles": 8,
+    "terrain": "forest",
+    "road_quality": "fair",
+    "danger_level": 2,
+    "base_travel_time_hours": 3
+  },
+  {
+    "origin_id": "blackwood",
+    "destination_id": "old_ruins",
+    "distance_miles": 4,
+    "terrain": "forest",
+    "road_quality": "poor",
+    "danger_level": 3,
+    "base_travel_time_hours": 2
+  },
+  {
+    "origin_id": "old_ruins",
+    "destination_id": "blackwood",
+    "distance_miles": 4,
+    "terrain": "forest",
+    "road_quality": "poor",
+    "danger_level": 3,
+    "base_travel_time_hours": 2
+  },
+  {
+    "origin_id": "ravenhollow",
+    "destination_id": "abandoned_mine",
+    "distance_miles": 6,
+    "terrain": "hills",
+    "road_quality": "fair",
+    "danger_level": 2,
+    "base_travel_time_hours": 2
+  },
+  {
+    "origin_id": "abandoned_mine",
+    "destination_id": "ravenhollow",
+    "distance_miles": 6,
+    "terrain": "hills",
+    "road_quality": "fair",
+    "danger_level": 2,
+    "base_travel_time_hours": 2
+  },
+  {
+    "origin_id": "ravenhollow",
+    "destination_id": "farmstead",
+    "distance_miles": 5,
+    "terrain": "plains",
+    "road_quality": "good",
+    "danger_level": 1,
+    "base_travel_time_hours": 1.5
+  },
+  {
+    "origin_id": "farmstead",
+    "destination_id": "ravenhollow",
+    "distance_miles": 5,
+    "terrain": "plains",
+    "road_quality": "good",
+    "danger_level": 1,
+    "base_travel_time_hours": 1.5
+  }
+]

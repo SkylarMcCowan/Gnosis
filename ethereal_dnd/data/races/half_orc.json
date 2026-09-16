@@ -1,0 +1,22 @@
+{
+  "id": "half-orc",
+  "name": "Half-Orc",
+  "ability_modifiers": {
+    "STR": 2,
+    "INT": -2,
+    "CHA": -2
+  },
+  "size": "Medium",
+  "speed": 30,
+  "languages": [
+    "Common",
+    "Orc"
+  ],
+  "racial_traits": [
+    "Starting Intelligence score is always at least 3",
+    "Darkvision 60 ft.",
+    "Orc Blood: counts as an orc for race-related effects"
+  ],
+  "favored_class": "Barbarian",
+  "special_abilities": []
+}

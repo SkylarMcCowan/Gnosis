@@ -1,0 +1,18 @@
+{
+  "id": "dagger",
+  "name": "Dagger",
+  "weight": 1,
+  "value_gp": 2,
+  "properties": {
+    "damage_dice": "1d4",
+    "critical": "19-20/x2",
+    "range_increment_ft": 10,
+    "damage_type": "piercing_or_slashing",
+    "weapon_category": "simple",
+    "weapon_group": "light"
+  },
+  "requirements": [],
+  "effects": [],
+  "equipment_slot": "weapon",
+  "rarity": "mundane"
+}

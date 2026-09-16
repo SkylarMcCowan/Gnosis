@@ -1,0 +1,16 @@
+{
+  "id": "human",
+  "name": "Human",
+  "ability_modifiers": {},
+  "size": "Medium",
+  "speed": 30,
+  "languages": [
+    "Common"
+  ],
+  "racial_traits": [
+    "1 extra feat at 1st level",
+    "4 extra skill points at 1st level and 1 extra skill point at each additional level"
+  ],
+  "favored_class": "Any",
+  "special_abilities": []
+}

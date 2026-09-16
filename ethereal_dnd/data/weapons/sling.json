@@ -1,0 +1,18 @@
+{
+  "id": "sling",
+  "name": "Sling",
+  "weight": 0,
+  "value_gp": 0,
+  "properties": {
+    "damage_dice": "1d4",
+    "critical": "x2",
+    "range_increment_ft": 50,
+    "damage_type": "bludgeoning",
+    "weapon_category": "simple",
+    "weapon_group": "ranged"
+  },
+  "requirements": [],
+  "effects": [],
+  "equipment_slot": "weapon",
+  "rarity": "mundane"
+}

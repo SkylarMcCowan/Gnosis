@@ -20,6 +20,7 @@ from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import QWidget
 
 from core import config as core_config
+from games.start_screen import consume_start_input, draw_start_screen
 
 CANVAS_WIDTH = 880
 CANVAS_HEIGHT = 560
@@ -32,6 +33,11 @@ CHAIN_SPEED_START = 42.0  # px/sec
 CHAIN_SPEED_MAX = 130.0
 CHAIN_SPEED_STEP = 8.0
 DIFFICULTY_INTERVAL = 20.0  # seconds between each ramp-up
+
+CHAIN_CATCHUP_MULTIPLIER = 3.0  # speed boost for a ball with open space ahead of it, so a
+# gap left by a match (or a shot ball forcing others apart) slides shut instead of just
+# sitting there - the trailing balls surge forward until they touch, then settle back to
+# the shared chain_speed so the reconnected train moves as one piece again.
 
 SPAWN_INTERVAL = 1.1  # seconds between new balls appended at the back
 
@@ -101,6 +107,7 @@ class ZumaEndlessWidget(QWidget):
         else:
             self.high_score = 0
             self._reset_game()
+        self.started = False  # gated by a start screen - see games/start_screen.py
 
         self._last_tick = time.monotonic()
         self.timer = QTimer(self)
@@ -165,6 +172,9 @@ class ZumaEndlessWidget(QWidget):
         now = time.monotonic()
         dt = min(now - self._last_tick, 0.05)  # clamp so a stall/pause never causes a huge jump
         self._last_tick = now
+        if not self.started:
+            self.update()
+            return
         if self.state == "playing":
             self.elapsed += dt
             self._update_difficulty(dt)
@@ -181,14 +191,21 @@ class ZumaEndlessWidget(QWidget):
         self.color_count = min(len(PALETTE), self.color_count + 1)
 
     def _update_chain(self, dt):
+        # Front ball (largest dist) always leads at the base pace. Every ball behind it
+        # is normally clamped to hold exactly BALL_SPACING from the one ahead - but if a
+        # match or an inserted ball has just opened extra room ahead of it, it surges
+        # forward at a catch-up speed until it closes that gap, so the whole chain reads
+        # as one train being driven forward rather than balls drifting in independently.
         self.chain.sort(key=lambda b: b["dist"], reverse=True)
-        ahead_dist = None
+        ahead_limit = None
         for ball in self.chain:
-            target = ball["dist"] + self.chain_speed * dt
-            if ahead_dist is not None:
-                target = min(target, ahead_dist - BALL_SPACING)
-            ball["dist"] = target
-            ahead_dist = ball["dist"]
+            if ahead_limit is None:
+                ball["dist"] = ball["dist"] + self.chain_speed * dt
+            else:
+                gap = ahead_limit - ball["dist"]
+                speed = self.chain_speed if gap <= 1e-6 else self.chain_speed * CHAIN_CATCHUP_MULTIPLIER
+                ball["dist"] = min(ball["dist"] + speed * dt, ahead_limit)
+            ahead_limit = ball["dist"] - BALL_SPACING
 
         self.spawn_timer += dt
         back_clear = not self.chain or self.chain[-1]["dist"] >= BALL_SPACING
@@ -221,10 +238,33 @@ class ZumaEndlessWidget(QWidget):
         return None
 
     def _insert_ball(self, color, hit_ball, px, py):
+        # Splice the new ball in right next to whichever ball it hit, then make room for
+        # it: nudge forward any balls closer to the hole that it would now overlap, and
+        # push back (away from the hole) any balls behind it that it would now overlap -
+        # the classic Zuma "chain recoils to make space" feel, rather than letting the
+        # new ball land on top of whatever was already sitting there.
+        ordered = sorted(self.chain, key=lambda b: b["dist"], reverse=True)
+        hit_idx = next(i for i, b in enumerate(ordered) if b is hit_ball)
         p_dist = self._nearest_path_dist(px, py)
-        new_dist = hit_ball["dist"] + BALL_SPACING if p_dist > hit_ball["dist"] else hit_ball["dist"] - BALL_SPACING
+        if p_dist > hit_ball["dist"]:
+            insert_idx = hit_idx
+            new_dist = hit_ball["dist"] + BALL_SPACING
+        else:
+            insert_idx = hit_idx + 1
+            new_dist = hit_ball["dist"] - BALL_SPACING
         new_ball = {"color": color, "dist": max(0.0, new_dist)}
-        self.chain.append(new_ball)
+        ordered.insert(insert_idx, new_ball)
+
+        for i in range(insert_idx - 1, -1, -1):
+            min_dist = ordered[i + 1]["dist"] + BALL_SPACING
+            if ordered[i]["dist"] < min_dist:
+                ordered[i]["dist"] = min_dist
+        for i in range(insert_idx + 1, len(ordered)):
+            max_dist = ordered[i - 1]["dist"] - BALL_SPACING
+            if ordered[i]["dist"] > max_dist:
+                ordered[i]["dist"] = max_dist
+
+        self.chain = ordered
         self._resolve_matches(new_ball)
 
     def _resolve_matches(self, seed_ball):
@@ -349,6 +389,8 @@ class ZumaEndlessWidget(QWidget):
         self.aim_angle = math.atan2(pos.y() - cy, pos.x() - cx)
 
     def mousePressEvent(self, event):
+        if consume_start_input(self):
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             if self.state == "game_over":
                 self._reset_game()
@@ -358,6 +400,8 @@ class ZumaEndlessWidget(QWidget):
             self._swap_loaded()
 
     def keyPressEvent(self, event):
+        if consume_start_input(self):
+            return
         if event.key() == Qt.Key.Key_Space:
             if self.state == "game_over":
                 self._reset_game()
@@ -381,7 +425,13 @@ class ZumaEndlessWidget(QWidget):
         self._draw_projectiles(painter)
         self._draw_shooter(painter)
         self._draw_hud(painter)
-        if self.state == "game_over":
+        if not self.started:
+            draw_start_screen(painter, self.rect(), "Zuma Endless", [
+                "Match 3+ balls of the same color before the chain reaches the center.",
+                "Aim with the mouse, right click or Q to swap your loaded ball.",
+                "Click or press Space to begin.",
+            ])
+        elif self.state == "game_over":
             self._draw_game_over(painter)
         painter.end()
 

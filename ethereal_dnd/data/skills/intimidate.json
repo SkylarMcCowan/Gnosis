@@ -1,0 +1,12 @@
+{
+  "id": "intimidate",
+  "name": "Intimidate",
+  "key_ability": "CHA",
+  "trained_only": false,
+  "armor_check_penalty": false,
+  "class_skill_by_class": [
+    "barbarian",
+    "fighter",
+    "rogue"
+  ]
+}

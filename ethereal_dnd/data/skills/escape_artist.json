@@ -1,0 +1,10 @@
+{
+  "id": "escape_artist",
+  "name": "Escape Artist",
+  "key_ability": "DEX",
+  "trained_only": false,
+  "armor_check_penalty": true,
+  "class_skill_by_class": [
+    "rogue"
+  ]
+}

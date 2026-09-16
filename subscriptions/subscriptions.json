@@ -58,5 +58,35 @@
       "url": "https://news.ycombinator.com",
       "keywords": []
     }
+  },
+  {
+    "id": "e92f68ec",
+    "type": "website",
+    "name": "Rotten Tomatoes",
+    "created_at": "2026-09-07T10:12:06.382137",
+    "metadata": {
+      "url": "https://www.rottentomatoes.com",
+      "keywords": []
+    }
+  },
+  {
+    "id": "c60117c8",
+    "type": "website",
+    "name": "Center for Action and Contemplation",
+    "created_at": "2026-09-07T10:12:13.493660",
+    "metadata": {
+      "url": "https://cac.org",
+      "keywords": []
+    }
+  },
+  {
+    "id": "25256a65",
+    "type": "website",
+    "name": "Wikipedia Current Events",
+    "created_at": "2026-09-07T10:12:15.484153",
+    "metadata": {
+      "url": "https://en.wikipedia.org/wiki/Portal:Current_events",
+      "keywords": []
+    }
   }
 ]

@@ -1,0 +1,19 @@
+{
+  "id": "leather",
+  "name": "Leather Armor",
+  "weight": 15,
+  "value_gp": 10,
+  "properties": {
+    "armor_bonus": 2,
+    "max_dex_bonus": 6,
+    "armor_check_penalty": 0,
+    "arcane_spell_failure_pct": 10,
+    "speed_30_ft_base": 30,
+    "speed_20_ft_base": 20,
+    "armor_category": "light"
+  },
+  "requirements": [],
+  "effects": [],
+  "equipment_slot": "armor",
+  "rarity": "mundane"
+}

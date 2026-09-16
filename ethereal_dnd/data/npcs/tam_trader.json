@@ -1,0 +1,36 @@
+{
+  "id": "tam_trader",
+  "name": "Tam the Trader",
+  "role": "merchant",
+  "location_id": "ravenhollow",
+  "npc_class": "expert",
+  "npc_level": 3,
+  "ability_scores": {
+    "STR": 10,
+    "DEX": 12,
+    "CON": 11,
+    "INT": 14,
+    "WIS": 11,
+    "CHA": 13
+  },
+  "personality": "Talkative and always closing a deal; genuinely rattled by his loss.",
+  "faction_id": null,
+  "goals": [
+    "Recover his lost shipment",
+    "Corner the market on Blackwood furs"
+  ],
+  "rumors": [
+    {
+      "text": "A merchant claims to have lost an important package.",
+      "quest_id": null
+    }
+  ],
+  "stock": [
+    "dagger",
+    "club",
+    "sling",
+    "quarterstaff",
+    "light_crossbow",
+    "rapier"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "hide",
+  "name": "Hide Armor",
+  "weight": 25,
+  "value_gp": 15,
+  "properties": {
+    "armor_bonus": 3,
+    "max_dex_bonus": 4,
+    "armor_check_penalty": -3,
+    "arcane_spell_failure_pct": 20,
+    "speed_30_ft_base": 20,
+    "speed_20_ft_base": 15,
+    "armor_category": "medium"
+  },
+  "requirements": [],
+  "effects": [],
+  "equipment_slot": "armor",
+  "rarity": "mundane"
+}

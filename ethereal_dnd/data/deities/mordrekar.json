@@ -1,0 +1,14 @@
+{
+  "id": "mordrekar",
+  "name": "Mordrekar, the Hollow King",
+  "alignment": "NE",
+  "domains": [
+    "Death",
+    "Evil",
+    "Trickery"
+  ],
+  "dogma": "Strength is the only mercy worth granting, and mercy is a debt collected with interest. Take what the weak cannot keep; owe nothing you can steal instead.",
+  "code_of_conduct": [],
+  "favored_weapon": "dagger",
+  "symbol": "a broken crown wreathed in black flame"
+}

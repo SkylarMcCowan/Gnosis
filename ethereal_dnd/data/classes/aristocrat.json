@@ -1,0 +1,44 @@
+{
+  "id": "aristocrat",
+  "name": "Aristocrat (NPC)",
+  "hit_die": 8,
+  "base_attack_progression": "average",
+  "save_progression": {
+    "fortitude": "poor",
+    "reflex": "poor",
+    "will": "good"
+  },
+  "class_skills": [
+    "appraise",
+    "bluff",
+    "diplomacy",
+    "disguise",
+    "forgery",
+    "gather_information",
+    "handle_animal",
+    "intimidate",
+    "knowledge",
+    "listen",
+    "perform",
+    "ride",
+    "sense_motive",
+    "speak_language",
+    "spot",
+    "swim",
+    "survival"
+  ],
+  "skill_points_per_level": 4,
+  "weapon_proficiencies": [
+    "simple",
+    "martial"
+  ],
+  "armor_proficiencies": [
+    "light",
+    "medium",
+    "heavy",
+    "shield_including_tower"
+  ],
+  "class_features": [],
+  "spellcasting": null,
+  "alignment_restriction": []
+}

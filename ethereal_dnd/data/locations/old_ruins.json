@@ -1,0 +1,8 @@
+{
+  "id": "old_ruins",
+  "name": "Old Ruins",
+  "description": "The collapsed remains of a keep older than Ravenhollow itself, half-swallowed by Blackwood. Treasure-hunters go in more often than they come out.",
+  "npc_ids": [],
+  "discovered": false,
+  "locked": false
+}

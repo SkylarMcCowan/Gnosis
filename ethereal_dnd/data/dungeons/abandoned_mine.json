@@ -1,0 +1,46 @@
+{
+  "id": "abandoned_mine",
+  "location_id": "abandoned_mine",
+  "entry_room_id": "mine_entrance",
+  "rooms": [
+    {
+      "id": "mine_entrance",
+      "name": "Mine Entrance",
+      "description": "Splintered support beams and a broken winch. The tunnel mouth reeks of tallow smoke - someone's still using this place.",
+      "exits": {"deeper": "collapsed_tunnel"},
+      "monster_ids": [],
+      "trap": null
+    },
+    {
+      "id": "collapsed_tunnel",
+      "name": "Collapsed Tunnel",
+      "description": "Half the ceiling came down here long ago. A narrow path winds around the rubble.",
+      "exits": {"deeper": "miners_cage"},
+      "monster_ids": [],
+      "trap": {
+        "id": "camouflaged_pit_trap",
+        "name": "Camouflaged Pit Trap",
+        "reflex_save_dc": 20,
+        "damage_dice": "1d6",
+        "search_dc": 24,
+        "disable_device_dc": 20
+      }
+    },
+    {
+      "id": "miners_cage",
+      "name": "Miners' Cage",
+      "description": "The missing crew, alive but starved, penned behind a makeshift iron gate. A single bandit dozes at his post.",
+      "exits": {"deeper": "boss_chamber"},
+      "monster_ids": ["bandit"],
+      "trap": null
+    },
+    {
+      "id": "boss_chamber",
+      "name": "Boss Chamber",
+      "description": "A wide chamber lit by a stolen brazier. This is where whoever is behind this has been living off the miners' labor.",
+      "exits": {},
+      "monster_ids": ["bandit_leader", "bandit"],
+      "trap": null
+    }
+  ]
+}

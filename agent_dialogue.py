@@ -66,7 +66,7 @@ def call_agent_json(chat_fn, system_prompt, extra_messages=None, max_clarify_rou
     if extra_messages:
         messages.extend(extra_messages)
 
-    for _ in range(max_clarify_rounds + 1):
+    for round_index in range(max_clarify_rounds + 1):
         content = chat_fn(messages)
         try:
             parsed = _extract_json(content)
@@ -74,6 +74,13 @@ def call_agent_json(chat_fn, system_prompt, extra_messages=None, max_clarify_rou
             return None
 
         if isinstance(parsed, dict) and "clarify" in parsed:
+            if round_index == max_clarify_rounds:
+                # Clarify budget exhausted - return "no decision" explicitly
+                # rather than handing the caller a raw {"clarify": [...]}
+                # dict shaped nothing like the JSON protocol it expects.
+                # Callers happened to degrade safely on the missing
+                # tool/action key before this, but that was incidental.
+                return None
             answers = ask_user_question(parsed["clarify"])
             qa_text = "\n".join(f"Q: {q}\nA: {a}" for q, a in answers.items())
             messages.append({"role": "assistant", "content": content})
@@ -82,4 +89,4 @@ def call_agent_json(chat_fn, system_prompt, extra_messages=None, max_clarify_rou
 
         return parsed
 
-    return parsed
+    return None

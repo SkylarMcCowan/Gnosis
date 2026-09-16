@@ -1,0 +1,15 @@
+{
+  "id": "aurelia",
+  "name": "Aurelia, the Dawnbringer",
+  "alignment": "LG",
+  "domains": [
+    "Good",
+    "Law",
+    "Sun",
+    "Healing"
+  ],
+  "dogma": "Light exposes what darkness hides. Protect the innocent, keep your word, and stand between the helpless and harm - even when it costs you everything.",
+  "code_of_conduct": [],
+  "favored_weapon": "longsword",
+  "symbol": "a rising sun over an open hand"
+}

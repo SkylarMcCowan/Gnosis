@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import QWidget
 
 from core import config as core_config
 from games.audio import SoundPlayer
+from games.start_screen import consume_start_input, draw_start_screen
 
 CANVAS_WIDTH = 560
 CANVAS_HEIGHT = 420
@@ -91,6 +92,7 @@ class HangmanWidget(QWidget):
             self._restore_from_save(saved)
         else:
             self._new_game()
+        self.started = False  # gated by a start screen - see games/start_screen.py
 
         self.autosave_timer = QTimer(self)
         self.autosave_timer.timeout.connect(self.save_now)
@@ -195,10 +197,14 @@ class HangmanWidget(QWidget):
     # Input
     # ------------------------------------------------------------------
     def mousePressEvent(self, event):
+        if consume_start_input(self):
+            return
         if self.solved or self.failed:
             self._new_game()
 
     def keyPressEvent(self, event):
+        if consume_start_input(self):
+            return
         if event.key() == Qt.Key.Key_N and (self.solved or self.failed):
             self._new_game()
             return
@@ -227,7 +233,13 @@ class HangmanWidget(QWidget):
         self._draw_word_tiles(painter, shake_dx)
         self._draw_alphabet(painter)
         self._draw_hud(painter)
-        if self.solved:
+        if not self.started:
+            draw_start_screen(painter, self.rect(), "Hangman", [
+                "Type a letter to guess.",
+                f"{MAX_WRONG} wrong guesses and it's game over.",
+                "Press any key to begin.",
+            ])
+        elif self.solved:
             self._draw_overlay(painter, CORRECT_COLOR, "You got it!")
         elif self.failed:
             self._draw_overlay(painter, WRONG_COLOR, f"Game Over\nThe word was: {self.word}")

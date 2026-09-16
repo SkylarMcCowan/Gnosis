@@ -6,6 +6,7 @@ import os
 import subprocess
 
 from tools.registry import registry as tool_registry
+import penpot
 import webagent
 
 _GIT_ENV = {
@@ -247,3 +248,39 @@ def test_test_run_tool_reaches_the_real_test_suite(isolated_data_dir):
 
     assert passed is True
     assert "Ran 1 test" in output
+
+
+def test_design_tools_are_registered_and_reach_the_real_penpot_module(monkeypatch):
+    """design.* tools were constructed with penpot.py's real functions at
+    registration time - faking penpot.requests.post (rather than the
+    tool's own execute()) and invoking through the registry proves that,
+    the same way test_web_fetch_tool_reaches_the_real_pipeline does for
+    webagent.requests."""
+    for name in ("design.list_projects", "design.create_project", "design.list_files",
+                 "design.create_file", "design.get_file", "design.add_board", "design.add_shape"):
+        assert tool_registry.get(name) is not None
+
+    monkeypatch.setenv("PENPOT_URL", "http://localhost:9001")
+    monkeypatch.setenv("PENPOT_ACCESS_TOKEN", "test-token")
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._payload
+
+        content = b"1"
+
+    responses = iter([
+        [{"id": "t1", "is-default": True}],  # get-teams
+        [{"id": "p1", "name": "Website"}],  # get-projects
+    ])
+    monkeypatch.setattr(penpot.requests, "post", lambda *a, **k: FakeResponse(next(responses)))
+
+    result = tool_registry.execute("design.list_projects")
+
+    assert result == [{"id": "p1", "name": "Website"}]

@@ -1,0 +1,209 @@
+{
+  "id": "wizard",
+  "name": "Wizard",
+  "hit_die": 4,
+  "base_attack_progression": "poor",
+  "save_progression": {
+    "fortitude": "poor",
+    "reflex": "poor",
+    "will": "good"
+  },
+  "class_skills": [
+    "concentration",
+    "craft",
+    "decipher_script",
+    "knowledge",
+    "profession",
+    "spellcraft"
+  ],
+  "skill_points_per_level": 2,
+  "weapon_proficiencies": [
+    "club",
+    "dagger",
+    "heavy_crossbow",
+    "light_crossbow",
+    "quarterstaff"
+  ],
+  "armor_proficiencies": [],
+  "class_features": [
+    "summon_familiar",
+    "scribe_scroll",
+    "bonus_feat"
+  ],
+  "spellcasting": {
+    "type": "arcane",
+    "key_ability": "INT",
+    "preparation": "prepared",
+    "spells_per_day": [
+      [
+        3,
+        1
+      ],
+      [
+        4,
+        2
+      ],
+      [
+        4,
+        2,
+        1
+      ],
+      [
+        4,
+        3,
+        2
+      ],
+      [
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        4,
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        4,
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        4,
+        4,
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        4,
+        4,
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        4,
+        4,
+        4,
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        4,
+        4,
+        4,
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        4,
+        4,
+        4,
+        4,
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        4,
+        4,
+        4,
+        4,
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        3,
+        2,
+        1
+      ],
+      [
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        3,
+        3,
+        2
+      ],
+      [
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        3,
+        3
+      ],
+      [
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4
+      ]
+    ]
+  },
+  "alignment_restriction": []
+}

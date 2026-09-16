@@ -1,0 +1,32 @@
+{
+  "id": "mabel_innkeeper",
+  "name": "Old Mabel",
+  "role": "innkeeper",
+  "location_id": "ravenhollow",
+  "npc_class": "commoner",
+  "npc_level": 3,
+  "ability_scores": {
+    "STR": 11,
+    "DEX": 10,
+    "CON": 13,
+    "INT": 10,
+    "WIS": 14,
+    "CHA": 12
+  },
+  "personality": "Gruff but kind-hearted; misses nothing that happens in her taproom.",
+  "faction_id": null,
+  "goals": [
+    "Keep the inn running",
+    "Protect her regulars"
+  ],
+  "rumors": [
+    {
+      "text": "Something strange is happening in Blackwood.",
+      "quest_id": "wolves_of_blackwood"
+    },
+    {
+      "text": "Someone has been attacking travelers.",
+      "quest_id": "wolves_of_blackwood"
+    }
+  ]
+}

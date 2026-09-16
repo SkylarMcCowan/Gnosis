@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import QWidget
 
 from core import config as core_config
 from games.audio import SoundPlayer
+from games.start_screen import consume_start_input, draw_start_screen
 
 COLS = 10
 ROWS = 20
@@ -98,6 +99,7 @@ class TetrisWidget(QWidget):
         else:
             self.high_score = 0
             self._reset_game()
+        self.started = False  # gated by a start screen - see games/start_screen.py
 
         self._last_tick = time.monotonic()
         self._drop_accum = 0.0
@@ -317,6 +319,9 @@ class TetrisWidget(QWidget):
         now = time.monotonic()
         dt = min(now - self._last_tick, 0.05)
         self._last_tick = now
+        if not self.started:
+            self.update()
+            return
         if self.state == "clearing":
             self.clear_timer += dt
             if self.clear_timer >= CLEAR_FLASH_DURATION:
@@ -335,11 +340,15 @@ class TetrisWidget(QWidget):
     # Input
     # ------------------------------------------------------------------
     def mousePressEvent(self, event):
+        if consume_start_input(self):
+            return
         if self.state == "game_over":
             self._reset_game()
             self.update()
 
     def keyPressEvent(self, event):
+        if consume_start_input(self):
+            return
         key = event.key()
         if key == Qt.Key.Key_N and self.state == "game_over":
             self._reset_game()
@@ -388,7 +397,13 @@ class TetrisWidget(QWidget):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(board_rect_x, board_rect_y, BOARD_PX_WIDTH, BOARD_PX_HEIGHT)
         self._draw_side_panel(painter, board_rect_x + BOARD_PX_WIDTH + MARGIN)
-        if self.state == "paused":
+        if not self.started:
+            draw_start_screen(painter, self.rect(), "Tetris", [
+                "Left/Right to move, Up to rotate, Down for a soft drop, Space to hard drop.",
+                "P to pause.",
+                "Click or press any key to begin.",
+            ])
+        elif self.state == "paused":
             self._draw_overlay(painter, "Paused")
         elif self.state == "game_over":
             self._draw_overlay(painter, f"Game Over\nScore: {self.score}\nClick or N to restart")

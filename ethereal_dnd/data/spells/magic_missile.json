@@ -1,0 +1,24 @@
+{
+  "id": "magic_missile",
+  "name": "Magic Missile",
+  "school": "Evocation [Force]",
+  "levels": {
+    "wizard": 1
+  },
+  "casting_time": "1 standard action",
+  "range": "Medium (100 ft. + 10 ft./level)",
+  "target": "Up to five creatures, no two of which can be more than 15 ft. apart",
+  "duration": "Instantaneous",
+  "saving_throw": "None",
+  "spell_resistance": "Yes",
+  "components": [
+    "V",
+    "S"
+  ],
+  "effect_type": "damage",
+  "effect_params": {
+    "dice": "1d4+1",
+    "damage_type": "force",
+    "instance_count_formula": "magic_missile"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "id": "sister_wren",
+  "name": "Sister Wren",
+  "role": "priest",
+  "location_id": "ravenhollow",
+  "npc_class": "cleric",
+  "npc_level": 5,
+  "ability_scores": {
+    "STR": 9,
+    "DEX": 10,
+    "CON": 12,
+    "INT": 12,
+    "WIS": 16,
+    "CHA": 13
+  },
+  "personality": "Calm and patient; tends the sick and the grieving without judgment.",
+  "faction_id": "temple_of_aurelia",
+  "goals": [
+    "Tend to Ravenhollow's sick and dying",
+    "Root out anything that profanes the dead"
+  ],
+  "rumors": [
+    {
+      "text": "A priest is paying for undead remains.",
+      "quest_id": null
+    }
+  ],
+  "deity_id": "aurelia"
+}

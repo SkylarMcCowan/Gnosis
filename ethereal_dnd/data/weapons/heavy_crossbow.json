@@ -1,0 +1,18 @@
+{
+  "id": "heavy_crossbow",
+  "name": "Heavy Crossbow",
+  "weight": 8,
+  "value_gp": 50,
+  "properties": {
+    "damage_dice": "1d10",
+    "critical": "19-20/x2",
+    "range_increment_ft": 120,
+    "damage_type": "piercing",
+    "weapon_category": "simple",
+    "weapon_group": "ranged"
+  },
+  "requirements": [],
+  "effects": [],
+  "equipment_slot": "weapon",
+  "rarity": "mundane"
+}

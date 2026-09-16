@@ -1,0 +1,154 @@
+{
+  "watchlist": [
+    {
+      "id": "b8b5970c",
+      "symbol": "CL=F",
+      "added_at": "2026-09-11T10:45:24.282756"
+    },
+    {
+      "id": "361dfe27",
+      "symbol": "BZ=F",
+      "added_at": "2026-09-11T10:45:33.854417"
+    },
+    {
+      "id": "abf00397",
+      "symbol": "SPY",
+      "added_at": "2026-09-13T09:02:20.479120"
+    },
+    {
+      "id": "e78adaac",
+      "symbol": "QQQ",
+      "added_at": "2026-09-13T09:02:29.270607"
+    },
+    {
+      "id": "2ea1c97a",
+      "symbol": "IWM",
+      "added_at": "2026-09-13T09:02:33.389424"
+    },
+    {
+      "id": "36734a8a",
+      "symbol": "DIA",
+      "added_at": "2026-09-13T09:02:36.850464"
+    },
+    {
+      "id": "926a9c11",
+      "symbol": "TLT",
+      "added_at": "2026-09-13T09:02:40.865814"
+    },
+    {
+      "id": "919fe694",
+      "symbol": "IEF",
+      "added_at": "2026-09-13T09:02:44.076327"
+    },
+    {
+      "id": "8cdfd0f1",
+      "symbol": "SHY",
+      "added_at": "2026-09-13T09:02:48.174645"
+    },
+    {
+      "id": "da491e7b",
+      "symbol": "DXYZ",
+      "added_at": "2026-09-13T09:03:26.798011"
+    },
+    {
+      "id": "f5b85ae8",
+      "symbol": "UVXY",
+      "added_at": "2026-09-13T09:03:32.944326"
+    },
+    {
+      "id": "8fba8b8d",
+      "symbol": "USO",
+      "added_at": "2026-09-13T09:03:34.603782"
+    },
+    {
+      "id": "246c1fda",
+      "symbol": "UNG",
+      "added_at": "2026-09-13T09:03:39.381190"
+    },
+    {
+      "id": "f70b0bbd",
+      "symbol": "CPER",
+      "added_at": "2026-09-13T09:03:43.207812"
+    },
+    {
+      "id": "2dcdb51f",
+      "symbol": "GLD",
+      "added_at": "2026-09-13T09:03:45.864186"
+    },
+    {
+      "id": "aa1f4876",
+      "symbol": "XLF",
+      "added_at": "2026-09-13T09:03:49.148809"
+    },
+    {
+      "id": "a91c76d6",
+      "symbol": "XLI",
+      "added_at": "2026-09-13T09:03:51.912425"
+    },
+    {
+      "id": "74964dc5",
+      "symbol": "XLY",
+      "added_at": "2026-09-13T09:03:54.626396"
+    },
+    {
+      "id": "b9c1419d",
+      "symbol": "XLP",
+      "added_at": "2026-09-13T09:03:57.969645"
+    },
+    {
+      "id": "fc2dcf65",
+      "symbol": "XLK",
+      "added_at": "2026-09-13T09:04:02.503821"
+    },
+    {
+      "id": "5bc9b8a8",
+      "symbol": "XLE",
+      "added_at": "2026-09-13T09:04:05.861638"
+    },
+    {
+      "id": "f1de1e88",
+      "symbol": "XLU",
+      "added_at": "2026-09-13T09:04:09.053649"
+    },
+    {
+      "id": "f7256a16",
+      "symbol": "XLRE",
+      "added_at": "2026-09-13T09:04:11.657183"
+    },
+    {
+      "id": "65579ff1",
+      "symbol": "CPI",
+      "added_at": "2026-09-13T09:04:34.425777"
+    }
+  ],
+  "portfolio": {
+    "starting_cash": 100000.0,
+    "cash": 90001.0,
+    "holdings": [
+      {
+        "symbol": "CL=F",
+        "shares": 100.0,
+        "avg_cost": 99.99
+      }
+    ]
+  },
+  "transactions": [
+    {
+      "id": "9a318a66",
+      "symbol": "CL=F",
+      "side": "buy",
+      "shares": 100.0,
+      "price": 99.99,
+      "amount": 9999.0,
+      "realized_pnl": null,
+      "at": "2026-09-11T21:24:02.408087"
+    }
+  ],
+  "alert_settings": {
+    "threshold_pct": 5.0,
+    "sound_enabled": true,
+    "auto_refresh_minutes": 60.0
+  },
+  "alert_state": {},
+  "column_settings": {}
+}

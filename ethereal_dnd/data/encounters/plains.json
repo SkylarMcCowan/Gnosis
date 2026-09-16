@@ -1,0 +1,21 @@
+{
+  "entries": [
+    {
+      "type": "none",
+      "weight": 14,
+      "min_danger": 0
+    },
+    {
+      "type": "traveler",
+      "weight": 4,
+      "min_danger": 0,
+      "description": "A farmer's cart trundles past, the driver waving amiably."
+    },
+    {
+      "type": "discovery",
+      "weight": 2,
+      "min_danger": 0,
+      "description": "Wildflowers line the road - nothing of note, but a pleasant walk."
+    }
+  ]
+}

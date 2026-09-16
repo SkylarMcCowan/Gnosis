@@ -180,10 +180,15 @@ class MysteryWidget(QWidget):
         self._outer_layout = QVBoxLayout(self)
         self._outer_layout.setSpacing(10)
 
+        self.game_content = QWidget()
+        self._content_layout = QVBoxLayout(self.game_content)
+        self._content_layout.setContentsMargins(0, 0, 0, 0)
+        self._content_layout.setSpacing(10)
+
         self.intro_label = QLabel()
         self.intro_label.setWordWrap(True)
         self.intro_label.setStyleSheet(f"font-weight: bold; font-size: 13px; color: {TEXT_COLOR};")
-        self._outer_layout.addWidget(self.intro_label)
+        self._content_layout.addWidget(self.intro_label)
 
         self.clues_label = QLabel()
         self.clues_label.setWordWrap(True)
@@ -191,20 +196,20 @@ class MysteryWidget(QWidget):
             f"color: {MARK_NONE_TEXT}; background-color: {PANEL_BG}; border: 1px solid {BORDER_COLOR}; "
             f"border-radius: 6px; padding: 8px;"
         )
-        self._outer_layout.addWidget(self.clues_label)
+        self._content_layout.addWidget(self.clues_label)
 
         self.grid_container = QWidget()
         self.grid_container.setStyleSheet(
             f"background-color: {PANEL_BG}; border: 1px solid {BORDER_COLOR}; border-radius: 6px;"
         )
-        self._outer_layout.addWidget(self.grid_container)
+        self._content_layout.addWidget(self.grid_container)
 
         self._guilty_row_layout = QHBoxLayout()
         self._guilty_row_layout.addWidget(QLabel("Who is guilty?"))
         self.guilty_container = QWidget()
         self._guilty_row_layout.addWidget(self.guilty_container)
         self._guilty_row_layout.addStretch()
-        self._outer_layout.addLayout(self._guilty_row_layout)
+        self._content_layout.addLayout(self._guilty_row_layout)
 
         button_row = QHBoxLayout()
         check_button = QPushButton("Check Solution")
@@ -214,11 +219,13 @@ class MysteryWidget(QWidget):
         new_case_button.clicked.connect(self._new_case)
         button_row.addWidget(new_case_button)
         button_row.addStretch()
-        self._outer_layout.addLayout(button_row)
+        self._content_layout.addLayout(button_row)
 
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
-        self._outer_layout.addWidget(self.status_label)
+        self._content_layout.addWidget(self.status_label)
+
+        self._outer_layout.addWidget(self.game_content)
 
         saved = self._load_save()
         if saved:
@@ -229,6 +236,42 @@ class MysteryWidget(QWidget):
         self.autosave_timer = QTimer(self)
         self.autosave_timer.timeout.connect(self.save_now)
         self.autosave_timer.start(15_000)
+
+        # Start-screen gate - the case is already generated above (so a
+        # save is loaded/persisted exactly as before) but stays hidden
+        # behind a "Begin Case" prompt until the player dismisses it,
+        # instead of the puzzle just being live the moment this tab opens.
+        self.started = False
+        self.game_content.setVisible(False)
+        self.start_overlay = self._build_start_overlay()
+        self._outer_layout.addWidget(self.start_overlay)
+
+    def _build_start_overlay(self):
+        overlay = QWidget()
+        layout = QVBoxLayout(overlay)
+        layout.setContentsMargins(24, 48, 24, 48)
+        layout.setSpacing(10)
+
+        title = QLabel("🔎 Mystery")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet(f"font-weight: bold; font-size: 22px; color: {TEXT_COLOR};")
+        layout.addWidget(title)
+
+        subtitle = QLabel("A logic-grid whodunit - deduce the suspect, weapon, and room from the clues.")
+        subtitle.setWordWrap(True)
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        subtitle.setStyleSheet(f"color: {MUTED_COLOR};")
+        layout.addWidget(subtitle)
+
+        begin_button = QPushButton("Begin Case")
+        begin_button.clicked.connect(self._begin)
+        layout.addWidget(begin_button, 0, Qt.AlignmentFlag.AlignCenter)
+        return overlay
+
+    def _begin(self):
+        self.started = True
+        self.start_overlay.setVisible(False)
+        self.game_content.setVisible(True)
 
     # ------------------------------------------------------------------
     # State
@@ -321,7 +364,7 @@ class MysteryWidget(QWidget):
         self.grid_container.setStyleSheet(
             f"background-color: {PANEL_BG}; border: 1px solid {BORDER_COLOR}; border-radius: 6px;"
         )
-        self._outer_layout.replaceWidget(old, self.grid_container)
+        self._content_layout.replaceWidget(old, self.grid_container)
         old.deleteLater()
 
         grid = QGridLayout(self.grid_container)

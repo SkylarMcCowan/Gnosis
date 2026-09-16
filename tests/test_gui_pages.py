@@ -39,13 +39,13 @@ def gui(qapp, isolated_data_dir):
     window.deleteLater()
 
 
-def test_nav_has_twelve_pages(gui):
-    assert gui.pages.count() == 12
-    assert gui.nav_list.count() == 12
+def test_nav_has_fifteen_pages(gui):
+    assert gui.pages.count() == 16
+    assert gui.nav_list.count() == 16
 
 
 def test_nav_switches_pages(gui):
-    for i in range(12):
+    for i in range(16):
         gui.nav_list.setCurrentRow(i)
         assert gui.pages.currentIndex() == i
 

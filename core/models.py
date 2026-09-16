@@ -28,16 +28,67 @@ except Exception as e:
     print(f"{os.linesep}Warning: unable to import ollama: {e}{os.linesep}")
 
 MODELS = {
-    'main': 'yi:6b',              # normal responses
+    'main': 'qwen3.5:4b',         # normal responses - 262K native ctx, already pulled
     'search': 'qwen3.5:2b',       # reasoning responses (fallback to main)
-    'unfiltered': 'yi:6b',        # unfiltered responses (fallback to main)
+    'unfiltered': 'dolphin-mistral:7b',  # unfiltered/unmoderated responses - a real uncensored
+                                  # fine-tune (Dolphin-Mistral 7B, ~4.1GB), not just a smaller
+                                  # base model; fits comfortably on a 16GB M1 alongside the rest
+                                  # of this app
     'coding': 'qwen2.5-coder:7b',  # coding responses (fallback to main)
+    'fast': 'yi:6b',              # internal JSON-decision plumbing (tool routing, research
+                                  # planning, fact-check). This is what these calls already ran
+                                  # on in the common case before 'main' became a thinking model
+                                  # (_selected_model() resolved to 'main' whenever no other mode
+                                  # was active), so it's a zero-regression choice, confirmed
+                                  # non-thinking. qwen2.5-coder:7b was tried first and
+                                  # rejected: live-tested side by side on the exact tool-routing
+                                  # prompt, it answered "{"clarify": [...]}" (a spurious
+                                  # clarifying-question popup) for an unambiguous question
+                                  # ("what is the capital of France?") that yi:6b answered
+                                  # correctly with no clarify - see _select_tool_action's
+                                  # docstring for the same small-model-escape-hatch failure mode.
 }
+
+# Explicit context window per model, merged into every chat() call below. Ollama silently
+# defaults to 4096 tokens if nothing sets num_ctx (confirmed via the running llama-server
+# process's own -c 4096 flag) - previously nothing here ever set it, so trim_conversation()'s
+# own (larger) budget in webagent.py was routinely already past what the model could actually
+# see, regardless of model. yi:6b's 4096 is its native ceiling; the others get headroom well
+# under their native max, sized for a 16GB machine also running the rest of this app.
+MODEL_CONTEXT = {
+    'yi:6b': 4096,
+    'qwen3.5:4b': 8192,
+    'qwen3.5:2b': 8192,
+    'qwen2.5-coder:7b': 8192,
+    'dolphin-mistral:7b': 8192,
+}
+DEFAULT_CONTEXT = 4096
 
 
 def is_available():
     """Whether the ollama client imported successfully."""
     return ollama is not None
+
+
+def list_installed():
+    """Model tags actually pulled in the local Ollama install, for a GUI model
+    picker - distinct from MODELS (the role -> tag registry), since a user may
+    have other local models pulled that aren't wired to any role. Returns []
+    if Ollama isn't available rather than raising, since this is only ever
+    used to populate an optional selector."""
+    if ollama is None:
+        return []
+    try:
+        response = ollama.list()
+    except Exception:
+        return []
+    models = response.get('models', []) if isinstance(response, dict) else getattr(response, 'models', [])
+    names = []
+    for m in models:
+        name = m.get('model') if isinstance(m, dict) else getattr(m, 'model', None)
+        if name:
+            names.append(name)
+    return names
 
 
 def chat(model, messages, stream=False, **kwargs):
@@ -51,6 +102,9 @@ def chat(model, messages, stream=False, **kwargs):
     """
     if ollama is None:
         raise ModelUnavailableError("Ollama client is unavailable. Please install and configure ollama.")
+    options = dict(kwargs.pop('options', None) or {})
+    options.setdefault('num_ctx', MODEL_CONTEXT.get(model, DEFAULT_CONTEXT))
+    kwargs['options'] = options
     return ollama.chat(model=model, messages=messages, stream=stream, **kwargs)
 
 

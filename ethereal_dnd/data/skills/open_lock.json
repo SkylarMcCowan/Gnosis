@@ -1,0 +1,10 @@
+{
+  "id": "open_lock",
+  "name": "Open Lock",
+  "key_ability": "DEX",
+  "trained_only": true,
+  "armor_check_penalty": false,
+  "class_skill_by_class": [
+    "rogue"
+  ]
+}

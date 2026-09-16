@@ -1,0 +1,18 @@
+{
+  "id": "greataxe",
+  "name": "Greataxe",
+  "weight": 12,
+  "value_gp": 20,
+  "properties": {
+    "damage_dice": "1d12",
+    "critical": "x3",
+    "range_increment_ft": null,
+    "damage_type": "slashing",
+    "weapon_category": "martial",
+    "weapon_group": "two_handed"
+  },
+  "requirements": [],
+  "effects": [],
+  "equipment_slot": "weapon",
+  "rarity": "mundane"
+}

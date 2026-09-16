@@ -1,0 +1,14 @@
+{
+  "id": "craft",
+  "name": "Craft",
+  "key_ability": "INT",
+  "trained_only": false,
+  "armor_check_penalty": false,
+  "class_skill_by_class": [
+    "barbarian",
+    "fighter",
+    "rogue",
+    "cleric",
+    "wizard"
+  ]
+}

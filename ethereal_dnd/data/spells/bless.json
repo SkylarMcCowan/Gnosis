@@ -1,0 +1,29 @@
+{
+  "id": "bless",
+  "name": "Bless",
+  "school": "Enchantment (Compulsion) [Mind-Affecting]",
+  "levels": {
+    "cleric": 1
+  },
+  "casting_time": "1 standard action",
+  "range": "50 ft.",
+  "target": "The caster and all allies within a 50-ft. burst, centered on the caster",
+  "duration": "1 min./level",
+  "saving_throw": "None",
+  "spell_resistance": "Yes (harmless)",
+  "components": [
+    "V",
+    "S",
+    "DF"
+  ],
+  "effect_type": "buff",
+  "effect_params": {
+    "bonus": 1,
+    "bonus_type": "morale",
+    "applies_to": [
+      "attack_rolls",
+      "fear_saves"
+    ],
+    "duration_rounds_per_level": 10
+  }
+}

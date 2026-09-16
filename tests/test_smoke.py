@@ -18,7 +18,7 @@ def test_gnosis_launches_successfully():
 
 
 def test_model_registry_is_well_formed():
-    assert set(webagent.MODELS) == {"main", "search", "unfiltered", "coding"}
+    assert set(webagent.MODELS) == {"main", "search", "unfiltered", "coding", "fast"}
     assert all(isinstance(v, str) and v for v in webagent.MODELS.values())
 
 
@@ -43,11 +43,16 @@ def test_basic_conversation(fake_ollama_chat):
     model. Two model calls, not one: _select_tool_action's local-capability
     check now runs on every turn (its fake, non-JSON reply is correctly
     treated as "no tool needed" - see test_tool_actions.py), then the real
-    conversational reply streams."""
+    conversational reply streams. They use different models by design -
+    tool-action selection (and the other internal JSON-decision helpers) run
+    on MODELS['fast'], kept off whichever thinking-capable model a mode
+    selects for the user-facing reply, so an invisible decision never pays a
+    reasoning-latency tax - see MODELS['fast']'s comment in core/models.py."""
     reply = webagent.chat_response("Hello, are you there?")
     assert reply == fake_ollama_chat.reply
     assert len(fake_ollama_chat.calls) == 2
-    assert all(call["model"] == webagent.MODELS["main"] for call in fake_ollama_chat.calls)
+    assert fake_ollama_chat.calls[0]["model"] == webagent.MODELS["fast"]
+    assert fake_ollama_chat.calls[1]["model"] == webagent.MODELS["main"]
 
     roles = [m["role"] for m in webagent.context.assistant_convo]
     assert roles[-2:] == ["user", "assistant"]

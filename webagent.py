@@ -58,6 +58,14 @@ from tools.filesystem.read import FilesystemReadTool
 from tools.filesystem.write import FilesystemWriteTool
 from tools.repository.audit import RepoAuditTool
 from tools.repository.audit_advanced import RepoAuditAdvancedTool
+from tools.design.list_projects import DesignListProjectsTool
+from tools.design.create_project import DesignCreateProjectTool
+from tools.design.list_files import DesignListFilesTool
+from tools.design.create_file import DesignCreateFileTool
+from tools.design.get_file import DesignGetFileTool
+from tools.design.add_board import DesignAddBoardTool
+from tools.design.add_shape import DesignAddShapeTool
+import penpot
 from skills.registry import registry as skill_registry
 from skills.research.topic import ResearchTopicSkill
 from memory.experience import build_experience, record_experience
@@ -348,11 +356,26 @@ def _conversations_dir():
     return path
 
 
+def _derive_conversation_title(convo, max_len=40):
+    """Short, filesystem-safe title from the first user message, so a saved
+    conversation reads as something recognizable in a list instead of an
+    opaque conv_<timestamp> name."""
+    first_user = next((m.get('content', '') for m in convo if m.get('role') == 'user'), '').strip()
+    if not first_user:
+        return None
+    if len(first_user) > max_len:
+        first_user = first_user[:max_len].rsplit(' ', 1)[0] or first_user[:max_len]
+    return sanitize_filename(first_user) or None
+
+
 def save_conversation(name=None):
     """Save the current context.assistant_convo to a timestamped file. Returns path or None."""
     try:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        safe_name = sanitize_filename(name) if name else f"conv_{timestamp}"
+        if name:
+            safe_name = sanitize_filename(name)
+        else:
+            safe_name = _derive_conversation_title(context.assistant_convo) or f"conv_{timestamp}"
         fname = f"{safe_name}_{timestamp}.json"
         path = os.path.join(_conversations_dir(), fname)
         with open(path, 'w', encoding='utf-8') as f:
@@ -773,6 +796,8 @@ def stream_response():
 
 def _selected_model():
     """Return the model selected by the current shared application modes."""
+    if context.selected_model:
+        return context.selected_model
     if context.unfiltered_mode:
         return MODELS["unfiltered"]
     if context.reasoning_mode:
@@ -782,7 +807,7 @@ def _selected_model():
     return MODELS["main"]
 
 
-def chat_response(prompt, on_chunk=None, on_status=None):
+def chat_response(prompt, on_chunk=None, on_status=None, on_sources=None):
     """Process one chat message for any interface.
 
     This is the programmatic counterpart to the terminal loop: it owns
@@ -795,7 +820,11 @@ def chat_response(prompt, on_chunk=None, on_status=None):
     context for the duration of this call so deeply nested functions
     (search_web, model_directed_web_research, ...) can reach it without
     threading a callback through every signature; cleared afterward so it
-    never leaks into an unrelated call.
+    never leaks into an unrelated call. ``on_sources`` (optional) receives
+    the raw evidence list whenever web search or Deep Think actually ran -
+    an empty list means research was attempted and found nothing, which a
+    caller should show distinctly from "no research happened this turn"
+    (this function never calls it at all in that case).
     """
     if ollama is None:
         raise ModelUnavailableError("Ollama client is unavailable. Please install and configure ollama.")
@@ -807,12 +836,12 @@ def chat_response(prompt, on_chunk=None, on_status=None):
     previous_status_callback = context.status_callback
     context.status_callback = on_status
     try:
-        return _chat_response_impl(prompt, on_chunk)
+        return _chat_response_impl(prompt, on_chunk, on_sources)
     finally:
         context.status_callback = previous_status_callback
 
 
-def _chat_response_impl(prompt, on_chunk):
+def _chat_response_impl(prompt, on_chunk, on_sources=None):
     stop_tts()
     processed_prompt = process_search_tags(prompt)
 
@@ -832,6 +861,8 @@ def _chat_response_impl(prompt, on_chunk):
     if research_used:
         update_user_notes_softly(processed_prompt, [])
         search_results = model_directed_web_research(processed_prompt)
+        if on_sources:
+            on_sources(search_results)
         context.assistant_convo.append({
             "role": "system",
             "content": enhance_conversation_with_search(processed_prompt, search_results, deep=context.deep_think_mode),
@@ -858,6 +889,12 @@ def _chat_response_impl(prompt, on_chunk):
     persona_prompt = get_persona_system_prompt()
     if persona_prompt:
         context.assistant_convo.append({"role": "system", "content": persona_prompt})
+
+    memory_key = context.current_agent or "default"
+    memory_context = get_relevant_agent_memory(memory_key, processed_prompt)
+    if memory_context:
+        context.assistant_convo.append({"role": "system", "content": memory_context})
+
     context.assistant_convo.append({"role": "user", "content": processed_prompt})
 
     try:
@@ -878,6 +915,12 @@ def _chat_response_impl(prompt, on_chunk):
     # Stored as the model's own drafted answer, with nothing appended after
     # it - see fact_check_answer's call site below for why.
     context.assistant_convo.append({"role": "assistant", "content": complete_response})
+    if research_used:
+        # Rides along as an extra dict key - confirmed harmless to pass back
+        # into ollama.chat later (it's simply ignored), and it means sources
+        # persist through save_conversation/load_conversation for free, with
+        # no separate index-keyed structure to keep in sync with trimming.
+        context.assistant_convo[-1]["sources"] = search_results
 
     if research_used and complete_response.strip():
         # The fact-check result used to be appended onto the displayed
@@ -896,9 +939,9 @@ def _chat_response_impl(prompt, on_chunk):
             save_fact_check_record(processed_prompt, complete_response, fact_check, search_results)
 
     analyze_conversation_patterns(processed_prompt, complete_response)
-    if context.current_agent and complete_response:
+    if complete_response:
         events.publish(
-            TASK_COMPLETED, agent_name=context.current_agent,
+            TASK_COMPLETED, agent_name=context.current_agent or "default",
             user_input=processed_prompt, response=complete_response,
         )
     if context.tts_mode and not context.voice_mode:
@@ -1133,7 +1176,7 @@ def _resolve_correction_entity(prompt):
         f"Conversation:\n{_planner_history()}\n\nText to rewrite: {prompt}"
     )
     try:
-        response = model_chat(model=_selected_model(), messages=[{"role": "system", "content": resolver_prompt}])
+        response = model_chat(model=MODELS['fast'], messages=[{"role": "system", "content": resolver_prompt}])
         raw = (response.get("message", {}).get("content") or "")
         return _first_clean_line(raw)
     except Exception:
@@ -1524,7 +1567,7 @@ def _research_action(prompt, evidence, searches_used):
         f"User request: {prompt}\n\nEvidence:\n{evidence_text}"
     )
     def _chat_fn(messages):
-        response = model_chat(model=_selected_model(), messages=messages)
+        response = model_chat(model=MODELS['fast'], messages=messages)
         return response.get("message", {}).get("content", "")
 
     action = agent_dialogue.call_agent_json(_chat_fn, planner)
@@ -1589,14 +1632,14 @@ def _select_tool_action(prompt):
     knowledge base) would materially help answer this message - using the
     same model-agnostic JSON protocol _research_action already uses for web
     search, not Ollama's native tools= mechanism. Confirmed live before
-    building this: this app's default model (yi:6b) doesn't support
-    tools= at all (Ollama raises "does not support tools"), and even a
-    model that accepts the parameter isn't guaranteed to use it correctly
+    building this: yi:6b (this app's model for Unfiltered mode) doesn't
+    support tools= at all (Ollama raises "does not support tools"), and even
+    a model that accepts the parameter isn't guaranteed to use it correctly
     (qwen2.5-coder:7b took the schema but wrote its tool call out as plain
     JSON text instead of a real structured tool_calls response). A plain
     JSON decision that ordinary code parses works uniformly across every
-    local model this app runs, including the one most conversations
-    actually use.
+    local model this app runs, regardless of which one a given mode
+    selects.
 
     Returns {"tool": name, "arguments": {...}} or {"tool": None}. Never
     raises - any missing/unparseable/invalid response is treated as "no
@@ -1649,7 +1692,7 @@ def _select_tool_action(prompt):
     )
 
     def _chat_fn(messages):
-        response = model_chat(model=_selected_model(), messages=messages)
+        response = model_chat(model=MODELS['fast'], messages=messages)
         return response.get("message", {}).get("content", "")
 
     decision = agent_dialogue.call_agent_json(_chat_fn, planner)
@@ -1832,7 +1875,7 @@ def _deep_think_research_plan(prompt):
         f"User request: {prompt}"
     )
     try:
-        response = model_chat(model=_selected_model(), messages=[{"role": "system", "content": planner}])
+        response = model_chat(model=MODELS['fast'], messages=[{"role": "system", "content": planner}])
         content = response.get("message", {}).get("content", "")
         match = re.search(r"\[.*\]", content, re.DOTALL)
         queries = json.loads(match.group(0) if match else content)
@@ -2199,6 +2242,7 @@ def _fetch_stock_quote(symbol):
             else:
                 return {
                     "symbol": meta.get("symbol", symbol),
+                    "name": meta.get("longName") or meta.get("shortName") or meta.get("symbol", symbol),
                     "price": price,
                     "currency": meta.get("currency", ""),
                     "previous_close": meta.get("chartPreviousClose"),
@@ -3090,7 +3134,7 @@ def _select_tool_actions(prompt):
     )
 
     def _chat_fn(messages):
-        response = model_chat(model=_selected_model(), messages=messages)
+        response = model_chat(model=MODELS['fast'], messages=messages)
         return response.get("message", {}).get("content", "")
 
     decision = agent_dialogue.call_agent_json(_chat_fn, planner)
@@ -3591,6 +3635,7 @@ def load_user_profile():
         'preferences': [],
         'interests': [],
         'location': '',
+        'home_address': '',
         'timezone': '',
         'notes': '',
         'recent_explorations': []
@@ -3625,6 +3670,7 @@ def save_user_profile(profile):
             f.write("# Lines starting with # are comments\n\n")
             f.write(f"name: {profile.get('name', 'User')}\n")
             f.write(f"location: {profile.get('location', '')}\n")
+            f.write(f"home_address: {profile.get('home_address', '')}\n")
             f.write(f"timezone: {profile.get('timezone', '')}\n")
             f.write(f"persona: {profile.get('persona', 'neutral')}\n")
             f.write(f"preferences: {', '.join(profile.get('preferences', []))}\n")
@@ -4279,7 +4325,7 @@ def fact_check_answer(answer_text, evidence, user_prompt=""):
         f"Evidence:\n{evidence_lines}\n\nDrafted answer:\n{answer_text[:3000]}"
     )
     try:
-        response = model_chat(model=_selected_model(), messages=[{"role": "system", "content": checker_prompt}])
+        response = model_chat(model=MODELS['fast'], messages=[{"role": "system", "content": checker_prompt}])
         result = (response.get("message", {}).get("content") or "").strip()
         if not result or result.lower().startswith("no factual claims"):
             result = ""
@@ -4635,9 +4681,17 @@ def save_agent_memory(agent_name, conversation_summary):
 def extract_topics_from_summary(summary):
     """Extract key topics from conversation summary for memory indexing"""
     # Simple keyword extraction - could be enhanced with NLP
-    common_words = {'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'was', 'are', 'were', 'a', 'an'}
-    words = summary.lower().split()
-    topics = [word.strip('.,!?') for word in words if len(word) > 3 and word not in common_words]
+    common_words = {
+        'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
+        'is', 'was', 'are', 'were', 'a', 'an',
+        # save_agent_memory's stored summaries always start "User: ...
+        # Response: ..." - strip those labels too, or they end up as
+        # spurious "topics" every memory entry shares, causing unrelated
+        # future prompts to falsely match old memories.
+        'user', 'response',
+    }
+    words = [word.strip('.,!?:') for word in summary.lower().split()]
+    topics = [word for word in words if len(word) > 3 and word not in common_words]
     return list(set(topics))[:10]  # Return up to 10 unique topics
 
 def get_relevant_agent_memory(agent_name, current_topic):
@@ -4658,7 +4712,11 @@ def get_relevant_agent_memory(agent_name, current_topic):
     if relevant_conversations:
         context = f"\n=== Relevant Past Conversations ===\n"
         for conv in relevant_conversations[-3:]:  # Last 3 relevant conversations
-            context += f"Date: {conv['date'][:10]} - {conv['summary'][:200]}...\n"
+            # summary is already bounded at write time (save_agent_memory /
+            # _on_task_completed) - re-truncating here ate into it a second
+            # time, usually cutting the actual response fragment down to
+            # near-nothing mid-word.
+            context += f"Date: {conv['date'][:10]} - {conv['summary']}\n"
         return context
     
     return ""
@@ -7118,7 +7176,7 @@ def should_save_to_knowledge_base(user_input, response):
 
 def save_conversation_insights(agent_name, user_input, response):
     """Save valuable conversation insights to agent knowledge base"""
-    if not agent_name or not should_save_to_knowledge_base(user_input, response):
+    if not agent_name or agent_name not in AVAILABLE_AGENTS or not should_save_to_knowledge_base(user_input, response):
         return
     
     from datetime import datetime
@@ -7839,6 +7897,13 @@ def _register_tools():
     tool_registry.register(SandboxCloseTool(close_session))
     tool_registry.register(FilesystemReadTool(read_file))
     tool_registry.register(FilesystemWriteTool(write_file))
+    tool_registry.register(DesignListProjectsTool(penpot.list_projects))
+    tool_registry.register(DesignCreateProjectTool(penpot.create_project))
+    tool_registry.register(DesignListFilesTool(penpot.list_files))
+    tool_registry.register(DesignCreateFileTool(penpot.create_file))
+    tool_registry.register(DesignGetFileTool(penpot.get_file))
+    tool_registry.register(DesignAddBoardTool(penpot.add_board))
+    tool_registry.register(DesignAddShapeTool(penpot.add_shape))
 
 
 def _register_skills():
@@ -7852,7 +7917,11 @@ def _on_task_completed(agent_name, user_input, response):
     """Phase 12: the one real multi-subscriber case - replaces what used
     to be two duplicated direct-call chains (chat_response and
     _handle_unmatched_prompt) with a single event and a single handler."""
-    save_agent_memory(agent_name, f"User: {user_input[:100]}... Response: {response[:200]}...")
+    # Ellipsis only when real truncation happened - it used to be unconditional,
+    # which made every short exchange read as cut off even when nothing was cut.
+    user_part = user_input[:100] + ("..." if len(user_input) > 100 else "")
+    response_part = response[:200] + ("..." if len(response) > 200 else "")
+    save_agent_memory(agent_name, f"User: {user_part} Response: {response_part}")
     if should_save_to_knowledge_base(user_input, response):
         save_conversation_insights(agent_name, user_input, response)
 

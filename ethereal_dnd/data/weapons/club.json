@@ -1,0 +1,18 @@
+{
+  "id": "club",
+  "name": "Club",
+  "weight": 3,
+  "value_gp": 0,
+  "properties": {
+    "damage_dice": "1d6",
+    "critical": "x2",
+    "range_increment_ft": 10,
+    "damage_type": "bludgeoning",
+    "weapon_category": "simple",
+    "weapon_group": "one_handed"
+  },
+  "requirements": [],
+  "effects": [],
+  "equipment_slot": "weapon",
+  "rarity": "mundane"
+}

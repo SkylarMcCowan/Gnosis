@@ -1,0 +1,64 @@
+{
+  "id": "rogue",
+  "name": "Rogue",
+  "hit_die": 6,
+  "base_attack_progression": "average",
+  "save_progression": {
+    "fortitude": "poor",
+    "reflex": "good",
+    "will": "poor"
+  },
+  "class_skills": [
+    "appraise",
+    "balance",
+    "bluff",
+    "climb",
+    "craft",
+    "decipher_script",
+    "diplomacy",
+    "disable_device",
+    "disguise",
+    "escape_artist",
+    "forgery",
+    "gather_information",
+    "hide",
+    "intimidate",
+    "jump",
+    "knowledge",
+    "listen",
+    "move_silently",
+    "open_lock",
+    "perform",
+    "profession",
+    "search",
+    "sense_motive",
+    "sleight_of_hand",
+    "spot",
+    "swim",
+    "tumble",
+    "use_magic_device",
+    "use_rope"
+  ],
+  "skill_points_per_level": 8,
+  "weapon_proficiencies": [
+    "simple",
+    "hand_crossbow",
+    "rapier",
+    "sap",
+    "shortbow",
+    "short_sword"
+  ],
+  "armor_proficiencies": [
+    "light"
+  ],
+  "class_features": [
+    "sneak_attack",
+    "trapfinding",
+    "evasion",
+    "trap_sense",
+    "uncanny_dodge",
+    "improved_uncanny_dodge"
+  ],
+  "spellcasting": null,
+  "alignment_restriction": []
+}

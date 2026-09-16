@@ -1,0 +1,22 @@
+{
+  "id": "animal",
+  "name": "Animal (creature type)",
+  "hit_die": 8,
+  "base_attack_progression": "average",
+  "save_progression": {
+    "fortitude": "good",
+    "reflex": "good",
+    "will": "poor"
+  },
+  "class_skills": [],
+  "skill_points_per_level": 2,
+  "weapon_proficiencies": [
+    "natural_weapons_only"
+  ],
+  "armor_proficiencies": [],
+  "class_features": [
+    "low_light_vision"
+  ],
+  "spellcasting": null,
+  "alignment_restriction": []
+}

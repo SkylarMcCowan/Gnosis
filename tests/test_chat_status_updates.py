@@ -67,7 +67,7 @@ def test_chat_response_restores_the_previous_status_callback_on_error(isolated_d
     """A status callback registered by an outer/earlier call (or a stale one
     left over from a crashed turn) must not be clobbered permanently by a
     call that itself raises."""
-    def boom(prompt, on_chunk):
+    def boom(prompt, on_chunk, on_sources=None):
         raise RuntimeError("simulated failure")
 
     monkeypatch.setattr(webagent, "_chat_response_impl", boom)
