@@ -1,0 +1,7 @@
+{
+  "server_url": "https://gnosis.example:8766",
+  "device_id": "REPLACE_WITH_EXPORTED_DEVICE_ID",
+  "token": "REPLACE_WITH_EXPORTED_TOKEN",
+  "interval": 30,
+  "ca_file": ""
+}

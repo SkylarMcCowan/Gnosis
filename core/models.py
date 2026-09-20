@@ -10,17 +10,29 @@ funnel that every call site now goes through instead of calling
 `ollama.chat(...)` directly.
 """
 import os
+import time
+import threading
+from contextlib import contextmanager
 
 from colorama import Fore, Style
 
 from core.exceptions import ModelUnavailableError
+from core import cloud_models
+from observability import model_metrics
 
 # Work around broken proxy environment variables that can prevent ollama/httpx import.
 for _proxy_var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "all_proxy"):
     os.environ.pop(_proxy_var, None)
 
 try:
-    import ollama
+    import ollama as _ollama_api
+    # Bound stalled generation/connection waits; streaming timeout is per read.
+    try:
+        _read_timeout = max(5.0, float(os.getenv('GNOSIS_OLLAMA_TIMEOUT', '60')))
+    except ValueError:
+        _read_timeout = 60.0
+    import httpx
+    ollama = _ollama_api.Client(timeout=httpx.Timeout(_read_timeout, connect=5.0))
     OLLAMA_IMPORT_ERROR = None
 except Exception as e:
     ollama = None
@@ -65,6 +77,26 @@ MODEL_CONTEXT = {
 DEFAULT_CONTEXT = 4096
 
 
+_request_state = threading.local()
+
+
+@contextmanager
+def request_control(check_cancelled):
+    """Keep cancellation checks local to the thread running this request."""
+    previous = getattr(_request_state, 'check', None)
+    _request_state.check = check_cancelled
+    try:
+        yield
+    finally:
+        _request_state.check = previous
+
+
+def _check_cancelled():
+    check = getattr(_request_state, 'check', None)
+    if check:
+        check()
+
+
 def is_available():
     """Whether the ollama client imported successfully."""
     return ollama is not None
@@ -92,6 +124,19 @@ def list_installed():
 
 
 def chat(model, messages, stream=False, **kwargs):
+    from core.background import model_slot
+    if cloud_models.is_cloud(model):
+        return _chat_uncoordinated(model, messages, stream=stream, **kwargs)
+    if stream:
+        def generate():
+            with model_slot(check=_check_cancelled):
+                yield from _chat_uncoordinated(model, messages, stream=True, **kwargs)
+        return generate()
+    with model_slot(check=_check_cancelled):
+        return _chat_uncoordinated(model, messages, stream=False, **kwargs)
+
+
+def _chat_uncoordinated(model, messages, stream=False, **kwargs):
     """The one place every chat call (streaming or not) passes through.
 
     Raises ModelUnavailableError (a RuntimeError) consistently when Ollama
@@ -100,12 +145,56 @@ def chat(model, messages, stream=False, **kwargs):
     and would have hit a raw AttributeError on None.chat instead of a clear
     error.
     """
+    _check_cancelled()
+    if cloud_models.is_cloud(model):
+        return cloud_models.chat(model, messages, stream=stream)
     if ollama is None:
         raise ModelUnavailableError("Ollama client is unavailable. Please install and configure ollama.")
     options = dict(kwargs.pop('options', None) or {})
     options.setdefault('num_ctx', MODEL_CONTEXT.get(model, DEFAULT_CONTEXT))
     kwargs['options'] = options
-    return ollama.chat(model=model, messages=messages, stream=stream, **kwargs)
+    keep_alive = os.getenv('GNOSIS_OLLAMA_KEEP_ALIVE')
+    if keep_alive:
+        kwargs.setdefault('keep_alive', keep_alive)
+    # Internal context tags and evidence annotations aren't model input.
+    messages = [{k: v for k, v in m.items() if not k.startswith('_') and k != 'sources'}
+                if isinstance(m, dict) else m for m in messages]
+    started = time.perf_counter()
+    result = ollama.chat(model=model, messages=messages, stream=stream, **kwargs)
+    if not stream:
+        _check_cancelled()
+        model_metrics.record(model, result, time.perf_counter() - started, None)
+        return result
+    return _timed_stream(model, result, started)
+
+
+def thinking_options(model, enabled=False):
+    """Use explicit thinking controls only for known compatible model families."""
+    family = model.split(':', 1)[0].rsplit('/', 1)[-1].lower()
+    if family.startswith('gpt-oss'):
+        return {'think': 'high' if enabled else 'low'}
+    if family.startswith(('qwen3', 'deepseek-v3.1')):
+        return {'think': bool(enabled)}
+    return {}
+
+
+def _timed_stream(model, stream, started):
+    last = {}
+    first_content = None
+    try:
+        for chunk in stream:
+            _check_cancelled()
+            last = chunk
+            message = chunk.get('message', {}) if isinstance(chunk, dict) else getattr(chunk, 'message', None)
+            content = message.get('content') if isinstance(message, dict) else getattr(message, 'content', None)
+            if content and first_content is None:
+                first_content = round(time.perf_counter() - started, 4)
+            yield chunk
+    finally:
+        close = getattr(stream, 'close', None)
+        if close:
+            close()
+        model_metrics.record(model, last, time.perf_counter() - started, first_content)
 
 
 def pull_all():

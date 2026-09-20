@@ -137,15 +137,10 @@ sandboxed copy of production data, not just the dry-run preview — dry-run
 never calls `os.makedirs` at all, so it can't surface this class of bug. Two
 defenses now handle it:
 
-- `historian_clean_knowledge_base` stages every file to be sorted into a
-  temporary `.historian_staging/` directory first, then fans them out into
-  their bucket directories. This avoids the collision in the common case,
-  since by the time buckets are created, no top-level files are still in the
-  way (they're all in staging).
-- `_historian_ensure_bucket_dir` is a defensive fallback used everywhere a
-  bucket directory gets created (including in conversation merging): if the
-  target path exists and is not a directory, it appends a numeric suffix
-  until it finds one that's either free or already a directory.
+- `_historian_ensure_bucket_dir` chooses a numeric suffix when a flat file
+  already occupies a desired bucket path.
+- Each source is moved directly with an atomic rename. An interrupted run leaves
+  either the original file or its completed destination, with no staging backlog.
 
 If you add a third call site that creates a bucket directory, use
 `_historian_ensure_bucket_dir`, not a bare `os.makedirs`.
@@ -169,3 +164,14 @@ If you add a third call site that creates a bucket directory, use
   every title and both sorting passes fall back entirely to the keyword
   heuristic — Historian still dedupes and files everything away, just with
   less thematic clustering.
+
+## Nightly maintenance updates
+
+Historian now archives originals under `knowledge_state/archive/` before deleting
+sources or rewriting agent memory. Historical web captures with different content
+are retained; only captures with matching URL **and** content are deduplicated.
+Operational reports, hidden files, and symlinks are excluded from general cleanup.
+File classification includes a content excerpt as well as the filename.
+
+The nightly pipeline additionally catalogs existing folders, creates source-backed
+study notes, and persists retrieval passages; see [nightly_learning.md](nightly_learning.md).

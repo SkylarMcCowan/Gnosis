@@ -54,6 +54,22 @@ Gnosis is a cutting-edge AI assistant featuring **10 specialized agent personas*
 The terminal and GUI launchers automatically use the project's `venv` when it
 exists, so `/tts` loads the same `pyttsx3` installation as the rest of Gnosis.
 
+### GUI voice conversations
+Run `./venv/bin/python -m voice.download_model` once to download the offline
+English recognition model, then launch `./run_gui.sh` and click **Voice chat**.
+Allow microphone access when your operating system requests it. Speak normally;
+your words appear in the chat transcript, replies are spoken sentence by sentence,
+and listening resumes after playback. Recognition uses local Vosk and replies use
+the system speech voice (macOS `say`, or `pyttsx3` on other systems).
+
+The voice panel offers **Mute mic**, **Interrupt & listen**, **Voice settings**,
+and **End voice**. Settings select an extracted Vosk model folder, reply voice,
+and speaking speed. `GNOSIS_VOSK_MODEL` can override the model location. The mic
+pauses during spoken replies to avoid echo; click **Interrupt & listen** to
+interrupt a reply. Automatic interruption by speaking over playback is not yet
+supported. This voice session is available in the GUI; terminal `/voice` retains
+its existing behavior.
+
 🎉 **You're ready!** Gnosis will greet you with a random fun prompt and suggest the best agent for your needs.
 
 ## 🎭 Meet Your Specialized Agents
@@ -268,3 +284,74 @@ python webagent.py
 ```
 
 🌟 **Welcome to the future of personalized AI assistance.**
+
+Cloud models in the GUI
+-----------------------
+Click "Cloud models…" beside the model picker to enter an OpenAI or Anthropic
+API key and a chat model ID, then choose "Use cloud model". Keys stay in memory
+for this session. Alternatively set OPENAI_API_KEY and OPENAI_MODEL, or
+ANTHROPIC_API_KEY and ANTHROPIC_MODEL, before launching; configured models
+appear in the picker. Auto restores local mode-based selection. API usage
+has separate billing from ChatGPT/Claude subscriptions. Cloud chat sends the
+conversation and relevant profile, persona, memory, and research context to
+the selected provider. Internal capability routing still uses local Ollama.
+
+Local Ollama chat tuning
+------------------------
+Greetings, numeric arithmetic, and simple joke requests skip planning calls;
+Deep Think always keeps research enabled. Per-turn context is refreshed rather
+than accumulated. History uses an approximate UTF-8 token budget based on the
+selected model, reserves space for replies, and retains complete recent turns
+with bounded excerpts of older messages when space allows. An oversized current
+request produces an error instead of being silently discarded.
+Thinking is explicitly controlled for Qwen3 / Qwen3.5 and DeepSeek-v3.1;
+GPT-OSS uses low for normal chat and high with reasoning or Deep Think.
+Update dependencies with pip install -r requirements.txt for thinking support.
+/report includes recent local model timing and generation speed. To retain
+timing records without conversation text, set GNOSIS_MODEL_METRICS=1; records
+go to activity/model_metrics.jsonl. Set GNOSIS_OLLAMA_KEEP_ALIVE (e.g. 10m)
+to override Ollama's model retention. Longer retention uses memory for longer;
+the default is left to Ollama.
+
+GUI chat controls
+-----------------
+The activity line shows progress and elapsed time. Scroll up to pause following
+new replies; "Jump to latest" resumes it. "Copy reply" copies the latest reply
+as plain text. "Retry reply" replaces the last exchange, and "Edit last prompt"
+lets you revise and resend it or cancel the edit. These actions also work with
+loaded chats; scheduler replies can be copied but aren't replayable.
+
+Knowledge and chat reliability
+------------------------------
+Knowledge search ranks overlapping passages across complete text files and saved
+web captures, reindexes changed files, and filters duplicate passages. Source dates
+and original URLs are retained. Saved conversation notes remain unverified memory
+and cannot act as independent corroboration for live facts.
+Use Knowledge… in Chat to choose an already-installed local Ollama embedding model
+for semantic retrieval alongside keywords, or keep keyword search only. No model is
+automatically downloaded. GNOSIS_EMBEDDING_MODEL overrides this preference.
+Inspect evidence under a reply shows the retained passage and retrieval provenance;
+source scores and semantic similarity are heuristics, not factual probabilities.
+Memory… lets you edit, pin, or forget saved notes for the active agent. Up to 20 notes
+are retained, with pinned notes kept before recent unpinned notes.
+Local Ollama requests have a 5-second connection timeout and a 60-second inactivity
+timeout (override with GNOSIS_OLLAMA_TIMEOUT). Stop is checked on progress/chunks;
+a blocked model read can wait for its timeout before cancellation finishes.
+Repeated subscription lookups cache source data briefly: weather 2 minutes, teams
+1 minute, topics/sites 5 minutes. Asking to refresh or verify bypasses that cache;
+dashboard Refresh always fetches directly. Generated answers and failures are not cached.
+Run retrieval cases with python -m core.chat_evaluation cases.json --knowledge-root
+knowledge_base. Cases specify query, expected_sources, and excluded_sources. The
+source_removal_diagnostics helper tests retrieval sensitivity without modifying files;
+it is not SHAP/LIME and does not claim to explain a model's internal reasoning.
+Bundled smoke suite:
+python -m core.chat_evaluation tests/fixtures/chat_retrieval_cases.json --knowledge-root tests/fixtures/chat_retrieval
+Local saved passages can ground stable questions with Web mode off; changing facts
+still require live verification in Web mode.
+
+Subscriptions are organized by Sports, News, Entertainment, Weather, Technology,
+Science & nature, Business & finance, Health & wellbeing, Travel & food,
+Spirituality, and Other interests. Use Your interests to follow any named topic
+with optional aliases or a website source. Followed topics and sources can be
+removed there; teams and weather locations have their own pickers. The welcome
+dashboard uses the same categories. Existing subscriptions keep their saved data.

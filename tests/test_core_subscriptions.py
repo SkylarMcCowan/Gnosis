@@ -104,3 +104,11 @@ def test_can_add_again_after_removing(isolated_data_dir):
     add_subscription("team", "Manchester United")  # no longer a duplicate
 
     assert len(list_subscriptions()) == 1
+
+
+def test_concurrent_subscription_writes_retain_all_interests(isolated_data_dir):
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(lambda number: add_subscription('topic', f'Interest {number}'), range(24)))
+    assert len(list_subscriptions()) == 24
+    assert not list((isolated_data_dir/'subscriptions').glob('.subscriptions-*'))

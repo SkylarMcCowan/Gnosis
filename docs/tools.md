@@ -3,6 +3,12 @@
 Generated from the real tool registry - do not hand-edit; run `python3 scripts/generate_docs.py` instead.
 
 
+## `conversation.inspect`
+
+Inspect the active conversation topic, recent user turns, follow-up status, and requested output constraints without exposing the full transcript.
+
+- Permission: `SAFE`
+
 ## `cron.add`
 
 Create a new scheduled task (prompt, feature, or alarm) in the real system crontab.
@@ -123,6 +129,16 @@ List the Penpot projects in the connected instance's default team.
 
 - Permission: `SAFE`
 
+## `evidence.verify`
+
+Check a drafted answer against current-turn evidence and report supported, unsupported, conflicting, or wrong-entity claims.
+
+- Permission: `SAFE`
+- Parameters:
+  - `answer_text`: string
+  - `user_prompt`: string
+  - `evidence`: list[object]
+
 ## `fs.read`
 
 Read a file's content from an open sandbox workspace.
@@ -153,6 +169,24 @@ Show the working tree's uncommitted diff (git diff).
 Report the working tree's dirty state (git status --porcelain).
 
 - Permission: `SAFE`
+
+## `knowledge.forget`
+
+Archive and remove a selected saved knowledge source after explicit confirmation.
+
+- Permission: `REQUIRES_APPROVAL`
+- Parameters:
+  - `path`: string
+  - `confirm`: boolean
+
+## `knowledge.related`
+
+Find related saved knowledge with source provenance and retrieval signals.
+
+- Permission: `SAFE`
+- Parameters:
+  - `topic`: string
+  - `limit`: integer, optional
 
 ## `knowledge.search`
 
@@ -195,6 +229,12 @@ Get the current live weather for a place: temperature, feels-like temperature, c
 - Parameters:
   - `location`: string - a city, region, or place name
 
+## `model.status`
+
+Report selected model, availability, context budget, active modes, and recent metrics.
+
+- Permission: `SAFE`
+
 ## `repo.audit`
 
 Summarize the repository: file/line counts, TODO/FIXME findings, large files, tests folder presence.
@@ -204,6 +244,12 @@ Summarize the repository: file/line counts, TODO/FIXME findings, large files, te
 ## `repo.audit_advanced`
 
 Assess README quality, test-suite presence, CI config, and docs health for the repository.
+
+- Permission: `SAFE`
+
+## `repo.inspect`
+
+Inspect repository structure, audit findings, documentation, and test readiness.
 
 - Permission: `SAFE`
 
@@ -236,6 +282,15 @@ Run one allowlisted command (e.g. 'run_tests') inside an isolated workspace.
 List the user's current subscriptions - teams, topics, websites, and weather locations that Gnosis prioritizes in answers over guessing/searching.
 
 - Permission: `SAFE`
+
+## `task.plan`
+
+Turn a goal into a bounded checklist with dependencies and a next action.
+
+- Permission: `SAFE`
+- Parameters:
+  - `goal`: string
+  - `context`: string, optional
 
 ## `test.run`
 

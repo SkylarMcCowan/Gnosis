@@ -47,6 +47,112 @@ def test_web_search_tool_is_registered_and_reaches_the_real_search_pipeline(monk
     assert result == [{"title": "Example", "url": "https://example.com", "content": "...", "search_provider": "searxng"}]
 
 
+def test_conversation_inspect_tool_is_registered_and_bounded(monkeypatch):
+    import webagent
+
+    monkeypatch.setattr(webagent.context, "assistant_convo", [
+        webagent.sys_msgs.assistant_msg,
+        {"role": "user", "content": "give me a list of 100 books to read before i die"},
+        {"role": "assistant", "content": "A previous answer."},
+        {"role": "user", "content": "try again"},
+    ])
+
+    result = tool_registry.execute("conversation.inspect")
+
+    assert result["active_topic"] == "give me a list of 100 books to read before i die"
+    assert result["requested_count"] == 100
+    assert "list" in result["requested_formats"]
+    assert result["is_follow_up"] is True
+    assert "system" not in str(result).lower()
+
+
+def test_evidence_verify_tool_is_registered_and_returns_provenance(fake_ollama_chat):
+    fake_ollama_chat.reply = "- Claim is [Unverified]."
+    evidence = [{"url": "https://example.com", "content": "Source text."}]
+
+    result = tool_registry.execute(
+        "evidence.verify",
+        answer_text="A drafted claim.",
+        user_prompt="What is the claim?",
+        evidence=evidence,
+    )
+
+    assert result["has_findings"] is True
+    assert result["evidence_count"] == 1
+    assert result["source_urls"] == ["https://example.com"]
+    assert result["findings"] == fake_ollama_chat.reply
+
+
+def test_knowledge_related_tool_returns_provenance(isolated_data_dir):
+    webagent.record_to_knowledge_base("books.md", "Books about history and science.")
+
+    result = tool_registry.execute("knowledge.related", topic="books", limit=1)
+
+    assert len(result) == 1
+    assert result[0]["path"] == "books.md"
+    assert result[0]["provenance"]["origin"] == "saved-note"
+
+
+def test_knowledge_forget_requires_confirmation_and_archives_source(isolated_data_dir):
+    webagent.record_to_knowledge_base("remove-me.md", "Temporary note.")
+
+    refused = tool_registry.execute("knowledge.forget", path="remove-me.md")
+    assert refused["requires_confirmation"] is True
+    assert (isolated_data_dir / "knowledge_base" / "remove-me.md").exists()
+
+    removed = tool_registry.execute("knowledge.forget", path="remove-me.md", confirm=True)
+    assert removed["removed"] is True
+    assert not (isolated_data_dir / "knowledge_base" / "remove-me.md").exists()
+    assert (isolated_data_dir / removed["archive_path"]).exists()
+
+
+def test_knowledge_forget_rejects_path_traversal(isolated_data_dir):
+    result = tool_registry.execute("knowledge.forget", path="../outside.txt", confirm=True)
+
+    assert result["removed"] is False
+    assert result["error"] == "source not found"
+
+
+def test_repo_inspect_tool_is_registered_and_composes_audits(monkeypatch):
+    monkeypatch.setattr(webagent, "audit_repository", lambda: "basic")
+    monkeypatch.setattr(webagent, "audit_repository_advanced", lambda: "advanced")
+
+    result = tool_registry.execute("repo.inspect")
+
+    assert result == {"basic_audit": "basic", "advanced_audit": "advanced"}
+
+
+def test_model_status_tool_is_bounded(monkeypatch):
+    monkeypatch.setattr(webagent.context, "selected_model", "test-model")
+    monkeypatch.setattr(webagent.context, "web_search_mode", False)
+    monkeypatch.setattr(webagent.context, "deep_think_mode", True)
+
+    result = tool_registry.execute("model.status")
+
+    assert result["selected_model"] == "test-model"
+    assert result["modes"] == {
+        "web_search": False, "deep_think": True, "reasoning": False,
+        "coding": False, "voice": False,
+    }
+    assert "assistant_convo" not in result
+    assert "content" not in str(result)
+
+
+def test_task_plan_tool_returns_bounded_json(fake_ollama_chat):
+    fake_ollama_chat.reply = (
+        '{"goal": "finish project", "steps": [{"title": "Run tests", '
+        '"depends_on": [], "done": false}], "next_action": "Run tests"}'
+    )
+
+    result = tool_registry.execute("task.plan", goal="finish project", context="Python app")
+
+    assert result == {
+        "goal": "finish project",
+        "steps": [{"title": "Run tests", "depends_on": [], "done": False}],
+        "next_action": "Run tests",
+    }
+
+
 def test_web_fetch_tool_reaches_the_real_pipeline(monkeypatch):
     tool = tool_registry.get("web.fetch")
     assert tool is not None

@@ -20,3 +20,17 @@ def test_stop_voice_disables_voice_mode(monkeypatch):
     webagent.stop_voice()
 
     assert webagent.context.voice_mode is False
+
+
+def test_spoken_reply_omits_citations_and_source_list():
+    reply = 'The answer is forty-two [1, 2]. See [this guide](https://example.com).\n\n**Sources:**\n[1] Example publication\n[2] Another source'
+    assert webagent._clean_tts_text(reply) == 'The answer is forty-two . See this guide.'
+
+
+def test_tts_toggle_preserves_voice_chat(monkeypatch):
+    monkeypatch.setattr(webagent, 'has_tts_backend', lambda: True)
+    monkeypatch.setattr(webagent.context, 'voice_mode', True)
+    monkeypatch.setattr(webagent.context, 'tts_mode', False)
+    webagent._cmd_tts('/tts')
+    assert webagent.context.voice_mode
+    assert webagent.context.tts_mode

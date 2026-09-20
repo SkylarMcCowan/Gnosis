@@ -81,3 +81,53 @@ def test_chat_response_restores_the_previous_status_callback_on_error(isolated_d
         assert webagent.context.status_callback is sentinel
     finally:
         webagent.context.status_callback = None
+
+
+def test_thinking_status_is_reported_once_without_displaying_trace(fake_ollama_chat, monkeypatch):
+    monkeypatch.setattr(webagent.context, 'selected_model', None)
+    def thinking_chat(**kwargs):
+        return iter([
+            {'message': {'thinking': 'private thinking one', 'content': ''}},
+            {'message': {'thinking': 'private thinking two', 'content': ''}},
+            {'message': {'content': 'Final answer'}},
+        ])
+    monkeypatch.setattr(webagent.ollama, 'chat', thinking_chat)
+    statuses, chunks = [], []
+    assert webagent.chat_response('hello', on_chunk=chunks.append, on_status=statuses.append) == 'Final answer'
+    assert statuses.count('Thinking...') == 1
+    assert chunks == ['Final answer']
+
+
+def test_user_stop_propagates_from_status_callback(monkeypatch):
+    from core.exceptions import ChatCancelled
+    def cancel(message):
+        raise ChatCancelled()
+    monkeypatch.setattr(webagent.context, 'status_callback', cancel)
+    import pytest
+    with pytest.raises(ChatCancelled):
+        webagent._emit_status('Researching...')
+
+
+def test_stopped_stream_persists_only_visible_partial_reply(fake_ollama_chat, monkeypatch):
+    from core.exceptions import ChatCancelled
+    import pytest
+    closed = []
+    def stream(**kwargs):
+        def chunks():
+            try:
+                yield {'message': {'content': 'Visible part'}}
+                yield {'message': {'content': 'Not displayed'}}
+            finally:
+                closed.append(True)
+        return chunks()
+    monkeypatch.setattr(webagent.ollama, 'chat', stream)
+    seen = []
+    def on_chunk(chunk):
+        if seen:
+            raise ChatCancelled()
+        seen.append(chunk)
+    with pytest.raises(ChatCancelled):
+        webagent.chat_response('hello', on_chunk=on_chunk)
+    assert webagent.context.assistant_convo[-1] == {'role': 'assistant', 'content': 'Visible part', 'interrupted': True}
+    assert seen == ['Visible part']
+    assert closed == [True]

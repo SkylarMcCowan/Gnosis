@@ -23,9 +23,13 @@ resolution produced.
 import json
 import os
 import uuid
+import threading
+import tempfile
 from datetime import datetime
 
 from core import config as core_config
+
+_write_lock = threading.RLock()
 
 SUBSCRIPTION_TYPES = ("team", "topic", "website", "weather")
 
@@ -57,7 +61,27 @@ def get_subscription(subscription_id):
     return None
 
 
+def _save_subscriptions(records):
+    path = _subscriptions_path()
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory, prefix=".subscriptions-", delete=False) as handle:
+            temporary = handle.name
+            json.dump(records, handle, indent=2)
+        os.replace(temporary, path)
+    finally:
+        if temporary and os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 def add_subscription(sub_type, name, metadata=None):
+    with _write_lock:
+        return _add_subscription(sub_type, name, metadata)
+
+
+def _add_subscription(sub_type, name, metadata=None):
     if sub_type not in SUBSCRIPTION_TYPES:
         raise ValueError(f"Unknown subscription type {sub_type!r} - must be one of {SUBSCRIPTION_TYPES}")
     name = (name or "").strip()
@@ -77,20 +101,19 @@ def add_subscription(sub_type, name, metadata=None):
         "metadata": metadata or {},
     }
     records.append(record)
-    path = _subscriptions_path()
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(records, f, indent=2)
+    _save_subscriptions(records)
     return record
 
 
 def remove_subscription(subscription_id):
+    with _write_lock:
+        return _remove_subscription(subscription_id)
+
+
+def _remove_subscription(subscription_id):
     records = list_subscriptions()
     remaining = [r for r in records if r.get("id") != subscription_id]
     if len(remaining) == len(records):
         return False
-    path = _subscriptions_path()
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(remaining, f, indent=2)
+    _save_subscriptions(remaining)
     return True

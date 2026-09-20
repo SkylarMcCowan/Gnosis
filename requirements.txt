@@ -1,4 +1,4 @@
-ollama==0.3.3
+ollama>=0.5.1,<1
 trafilatura==1.12.2
 beautifulsoup4==4.12.3
 colorama==0.4.6
@@ -15,3 +15,7 @@ yt-dlp
 PyQt6>=6.6.1
 scapy>=2.7.0
 mcp>=1.0
+vosk>=0.3.44,<0.4
+
+# Optional online neural speech choices in Voice settings
+edge-tts>=7.2,<8

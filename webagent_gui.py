@@ -5,6 +5,9 @@ GUI for WebAgent - Modern chat interface with voice and web search capabilities
 import os
 import sys
 import html
+import copy
+import time
+from contextlib import contextmanager
 from datetime import datetime
 
 
@@ -29,12 +32,12 @@ try:
         QTextEdit, QTextBrowser, QPushButton, QLabel, QComboBox, QScrollArea,
         QFrame, QMessageBox, QStatusBar, QStackedLayout, QDialog, QLineEdit,
         QFileDialog, QRadioButton, QButtonGroup, QListWidget, QListWidgetItem, QStackedWidget,
-        QSplitter, QTabWidget
+        QSplitter, QTabWidget, QSpinBox
     )
     from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer, QRectF, QObject
     from PyQt6.QtGui import (
         QFont, QTextCursor, QGuiApplication, QPainter, QColor, QPen,
-        QTextBlockFormat, QTextCharFormat,
+        QTextBlockFormat, QTextCharFormat, QTextFrameFormat, QDesktopServices,
     )
 except ModuleNotFoundError as e:
     raise SystemExit("PyQt6 is required to run the GUI. Install it with `pip install PyQt6`.") from e
@@ -48,6 +51,7 @@ import agent_dialogue
 import code_review
 from core import config as core_config
 from core import models as core_models
+from core import cloud_models
 from games.zuma_endless import ZumaEndlessWidget
 from games.solitaire import SolitaireWidget
 from games.sudoku import SudokuWidget, DIFFICULTIES as SUDOKU_DIFFICULTIES
@@ -71,24 +75,29 @@ from ethereal_dnd_widget import EtherealDndWidget
 from penpot_studio import PenpotStudioWidget
 from converter import ConverterWidget
 from core import subscriptions
+from core import sports as core_sports
 from core.activity_log import load_activity, clear_activity
 from memory.experience import load_experiences
+from core.exceptions import ChatCancelled
+from voice.runtime import VoiceSession, VoicePreview
+from voice.panel import VoicePanel
+from subscription_dashboard import SubscriptionDashboard, DashboardUpdateWorker
 
-BG_APP = "#16161c"
-BG_PANEL = "#1e1e26"
-BG_ELEVATED = "#262631"
-BG_INPUT = "#20202a"
-BG_BUBBLE_USER = "#3a3160"
-BG_BUBBLE_ASSISTANT = "#23232e"
-BORDER = "#34343f"
-BORDER_LIGHT = "#44445a"
-TEXT_PRIMARY = "#eaeaf2"
-TEXT_SECONDARY = "#b4b4c4"
-TEXT_MUTED = "#797986"
-ACCENT = "#7c5cff"
-ACCENT_LIGHT = "#9d85ff"
-ACCENT_HOVER = "#8f6fff"
-ACCENT_PRESSED = "#6a4cf0"
+BG_APP = "#10141e"
+BG_PANEL = "#171d2a"
+BG_ELEVATED = "#222b3b"
+BG_INPUT = "#1a2232"
+BG_BUBBLE_USER = "#2b2949"
+BG_BUBBLE_ASSISTANT = "#1c2534"
+BORDER = "#2a3446"
+BORDER_LIGHT = "#40506a"
+TEXT_PRIMARY = "#edf1f8"
+TEXT_SECONDARY = "#b8c3d6"
+TEXT_MUTED = "#8c9ab1"
+ACCENT = "#8b79f6"
+ACCENT_LIGHT = "#b4a8ff"
+ACCENT_HOVER = "#a092ff"
+ACCENT_PRESSED = "#7766de"
 SUCCESS_GREEN = "#3ecf8e"
 SUCCESS_GREEN_HOVER = "#4ee0a0"
 
@@ -96,23 +105,25 @@ CHAT_BG_OPAQUE = f"""
     QTextEdit#chatDisplay {{
         background-color: {BG_PANEL};
         border: 1px solid {BORDER};
-        padding: 15px;
+        border-radius: 16px;
+        padding: 8px;
         color: {TEXT_PRIMARY};
         line-height: 1.5;
     }}
 """
 CHAT_BG_TRANSLUCENT = f"""
     QTextEdit#chatDisplay {{
-        background-color: rgba(30, 30, 38, 150);
+        background-color: rgba(23, 29, 42, 150);
         border: 1px solid {BORDER};
-        padding: 15px;
+        border-radius: 16px;
+        padding: 8px;
         color: {TEXT_PRIMARY};
         line-height: 1.5;
     }}
 """
 
 
-class _ResponseCancelled(Exception):
+class _ResponseCancelled(ChatCancelled):
     """Raised from inside a chunk/status callback to unwind out of
     webagent.chat_response when the user asked to stop - distinct from a
     real error so ResponseWorker can tell the two apart."""
@@ -134,9 +145,8 @@ class ResponseWorker(QThread):
         self._cancel_requested = False
 
     def cancel(self):
-        """Best-effort: takes effect the next time the running turn checks
-        in (a status update or a streamed chunk), not necessarily instantly -
-        there's no lower-level abort signal into the Ollama call itself."""
+        """Stop at the next status/model chunk, including silent thinking.
+        A blocked HTTP read remains bounded by the model transport timeout."""
         self._cancel_requested = True
 
     def run(self):
@@ -151,14 +161,23 @@ class ResponseWorker(QThread):
             self.status.emit(text)
 
         try:
-            response = webagent.chat_response(
-                self.user_input, guarded_chunk, guarded_status, on_sources=self.sources.emit,
-            )
+            def check_cancelled():
+                if self._cancel_requested:
+                    raise _ResponseCancelled()
+            with core_models.request_control(check_cancelled):
+                response = webagent.chat_response(
+                    self.user_input, guarded_chunk, guarded_status, on_sources=self.sources.emit,
+                )
+            if self._cancel_requested:
+                raise _ResponseCancelled()
             self.response_ready.emit(response)
         except _ResponseCancelled:
             self.cancelled.emit()
         except Exception as e:
-            self.error_occurred.emit(f"Error: {str(e)}")
+            if self._cancel_requested:
+                self.cancelled.emit()
+            else:
+                self.error_occurred.emit(f"Error: {str(e)}")
         finally:
             self.finished.emit()
 
@@ -587,39 +606,9 @@ _SUBSCRIPTION_TYPE_ICONS = {"team": "⚽", "topic": "📰", "website": "🌐", "
 # do, so it gets its own validated-text-entry section instead (see
 # _build_weather_subscription_section) rather than a catalog category here.
 #
-# Sports Leagues surfaces specific popular TEAMS, not league-wide
-# standings - the only implemented live sports scraper
-# (webagent._resolve_soccer_team/_fetch_soccer_team_matches, ESPN-backed)
-# is per-team; a true league-standings source would be new scraper work.
-SUBSCRIPTION_CATALOG = {
-    "News Sources": [
-        {"name": "BBC News", "type": "website", "url": "https://www.bbc.com/news"},
-        {"name": "Reuters", "type": "website", "url": "https://www.reuters.com"},
-        {"name": "Associated Press", "type": "website", "url": "https://apnews.com"},
-        {"name": "NPR", "type": "website", "url": "https://www.npr.org"},
-    ],
-    "Sports Leagues": [
-        {"name": "Manchester United", "type": "team"},
-        {"name": "Arsenal", "type": "team"},
-        {"name": "Real Madrid", "type": "team"},
-        {"name": "Barcelona", "type": "team"},
-        {"name": "Bayern Munich", "type": "team"},
-    ],
-    "Entertainment": [
-        {"name": "IMDb", "type": "website", "url": "https://www.imdb.com"},
-        {"name": "Rotten Tomatoes", "type": "website", "url": "https://www.rottentomatoes.com"},
-        {"name": "Variety", "type": "website", "url": "https://variety.com"},
-    ],
-    "Spirituality": [
-        {"name": "Tricycle (Buddhist Review)", "type": "website", "url": "https://tricycle.org"},
-        {"name": "On Being", "type": "website", "url": "https://onbeing.org"},
-        {"name": "Center for Action and Contemplation", "type": "website", "url": "https://cac.org"},
-    ],
-    "Misc": [
-        {"name": "Wikipedia Current Events", "type": "website", "url": "https://en.wikipedia.org/wiki/Portal:Current_events"},
-        {"name": "Hacker News", "type": "website", "url": "https://news.ycombinator.com"},
-    ],
-}
+# Popular soccer teams are shortcuts; the sports picker below also loads
+# complete team directories for the supported leagues and sports.
+from core.interest_catalog import CATALOG as SUBSCRIPTION_CATALOG, CATEGORIES as INTEREST_CATEGORIES, category_for
 
 
 class WebAgentGUI(QMainWindow):
@@ -627,7 +616,7 @@ class WebAgentGUI(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("🤖 WebAgent - AI Assistant")
+        self.setWindowTitle("Gnosis — AI workspace")
         self.setGeometry(100, 100, 1200, 800)
         self.setMinimumSize(900, 600)
         self.setStyleSheet(self.get_stylesheet())
@@ -635,8 +624,42 @@ class WebAgentGUI(QMainWindow):
         self.response_worker = None
         self.current_response = ""
         self.assistant_message_started = False
+        self._assistant_cursor = None
         self._pending_sources = None
-        self._warmup_workers = []
+        from background_tasks import DaytimeTasks
+        self._daytime = DaytimeTasks(core_config.project_root())
+        self._warmup_key = None
+        self._voice_priority = None
+        self._dashboard_worker = None
+        self._sports_worker = None
+        self._subscription_workers = []
+        self._response_active = False
+        self._voice_turn = False
+        self._close_requested = False
+        self.voice_preview = VoicePreview(self)
+        self.voice_session = VoiceSession(self)
+        self.voice_session.heard.connect(self._on_voice_input)
+        self.voice_session.phase.connect(self._on_voice_phase)
+        self.voice_session.level.connect(self._on_voice_level)
+        self.voice_session.enabled_changed.connect(self._on_voice_enabled)
+        self.voice_session.error.connect(self._on_voice_error)
+        self.voice_session.interrupt_requested.connect(self._interrupt_voice_reply)
+        self.voice_session.idle.connect(self._voice_idle)
+        self._follow_latest = True
+        self._updating_chat = False
+        self._activity_phase = ""
+        self._activity_started = None
+        self._activity_outcome = "Finished"
+        self._last_prompt = ""
+        self._last_reply = ""
+        self._last_turn_context = None
+        self._last_turn_html = ""
+        self._editing_last_turn = False
+        self._draft_before_edit = ""
+        self._last_retry_allowed = True
+        self.activity_timer = QTimer(self)
+        self.activity_timer.setInterval(250)
+        self.activity_timer.timeout.connect(self._refresh_chat_activity)
 
         self.clarify_bridge = ClarifyBridge(self)
         agent_dialogue.set_ui_asker(self.clarify_bridge.ask)
@@ -647,12 +670,61 @@ class WebAgentGUI(QMainWindow):
         self.mouth_timer = QTimer(self)
         self.mouth_timer.timeout.connect(self._update_mouth)
         self.mouth_timer.start(80)
+        self.background_label = QLabel("Background: ready")
+        self.background_pause = QPushButton("Pause background")
+        self.background_pause.setCheckable(True)
+        self.background_pause.toggled.connect(self._pause_background)
+        self.statusBar().addPermanentWidget(self.background_label)
+        self.statusBar().addPermanentWidget(self.background_pause)
+        self.background_timer = QTimer(self)
+        self.background_timer.setInterval(1000)
+        self.background_timer.timeout.connect(self._tick_background)
+        self.background_timer.start()
 
     def closeEvent(self, event):
         """Every game widget autosaves on its own timer already, but that
         can be up to 15-30s stale - explicitly flushing each one's
         save_now() here means closing the app (or restarting it) never
         loses whatever progress happened since the last autosave tick."""
+        self._close_requested = True
+        self.background_timer.stop()
+        self._daytime.shutdown()
+        if not self.voice_preview.shutdown():
+            event.ignore()
+            QTimer.singleShot(100, self.close)
+            return
+        if any(worker.isRunning() for worker in self._subscription_workers):
+            self.voice_session.stop()
+            if self._response_active:
+                self.response_worker.cancel()
+            if self._dashboard_worker is not None:
+                self._dashboard_worker.cancel()
+            event.ignore()
+            return
+        if self._sports_worker is not None and self._sports_worker.isRunning():
+            self.voice_session.stop()
+            if self._response_active:
+                self.response_worker.cancel()
+            if self._dashboard_worker is not None:
+                self._dashboard_worker.cancel()
+            event.ignore()
+            return
+        if self._dashboard_worker is not None and self._dashboard_worker.isRunning():
+            self._dashboard_worker.cancel()
+            self.voice_session.stop()
+            if self._response_active:
+                self.response_worker.cancel()
+            event.ignore()
+            return
+        if self._response_active:
+            self.voice_session.stop()
+            self.response_worker.cancel()
+            event.ignore()
+            self._set_chat_activity("Stopping")
+            return
+        if not self.voice_session.shutdown():
+            event.ignore()
+            return
         for widget in (
             self.zuma_widget, self.solitaire_widget, self.sudoku_widget,
             self.mystery_widget, self.tetris_widget, self.hangman_widget,
@@ -662,7 +734,37 @@ class WebAgentGUI(QMainWindow):
         ):
             widget.save_now()
         self.hacker_widget.stop_and_cleanup()
+        if self._voice_priority is not None:
+            self._voice_priority.__exit__(None, None, None)
+            self._voice_priority = None
         super().closeEvent(event)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if not hasattr(self, '_mode_grid'):
+            return
+        compact = self.width() < 1100
+        if compact != self._compact_chat:
+            self._compact_chat = compact
+            self.history_button.setChecked(not compact)
+        self._layout_chat_modes()
+
+    def _toggle_chat_history(self, visible):
+        self.convo_panel.setVisible(visible)
+        self._layout_chat_modes()
+
+    def _layout_chat_modes(self):
+        available = self.width() - 220 - (216 if not self.convo_panel.isHidden() else 0)
+        columns = 3 if available < 640 else 6
+        if columns == self._mode_columns:
+            return
+        self._mode_columns = columns
+        for button in self._mode_buttons:
+            self._mode_grid.removeWidget(button)
+        for column in range(6):
+            self._mode_grid.setColumnStretch(column, 1 if column < columns else 0)
+        for index, button in enumerate(self._mode_buttons):
+            self._mode_grid.addWidget(button, index // columns, index % columns)
 
     def _update_mouth(self):
         enabled = webagent.context.tts_mode
@@ -687,6 +789,8 @@ class WebAgentGUI(QMainWindow):
         self.nav_list = QListWidget()
         self.nav_list.setObjectName("navList")
         self.nav_list.setFixedWidth(180)
+        self.nav_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.nav_list.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.nav_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         for label in (
             "💬  Chat", "🔄  Self-Improve", "📊  Report", "📦  Proposals", "🧠  Knowledge",
@@ -729,6 +833,7 @@ class WebAgentGUI(QMainWindow):
         self.pages.addWidget(self.converter_widget)
 
         self.nav_list.currentRowChanged.connect(self.pages.setCurrentIndex)
+        self.nav_list.currentRowChanged.connect(self._on_page_changed)
         self.nav_list.setCurrentRow(0)
 
     def _build_chat_page(self):
@@ -749,8 +854,8 @@ class WebAgentGUI(QMainWindow):
         stack.setCurrentWidget(central_widget)
 
         outer_layout = QHBoxLayout(central_widget)
-        outer_layout.setContentsMargins(15, 15, 15, 15)
-        outer_layout.setSpacing(10)
+        outer_layout.setContentsMargins(20, 20, 20, 20)
+        outer_layout.setSpacing(16)
 
         # Conversation sidebar - lets you switch between saved conversations
         # or start a new one without losing the current one.
@@ -758,19 +863,22 @@ class WebAgentGUI(QMainWindow):
         self.conversation_saved_length = len(webagent.context.assistant_convo)
 
         convo_panel = QFrame()
+        self.convo_panel = convo_panel
+        self._compact_chat = False
         convo_panel.setObjectName("convoPanel")
         convo_panel.setFixedWidth(200)
         convo_layout = QVBoxLayout(convo_panel)
-        convo_layout.setContentsMargins(8, 8, 8, 8)
-        convo_layout.setSpacing(6)
+        convo_layout.setContentsMargins(12, 14, 12, 12)
+        convo_layout.setSpacing(12)
 
         convo_header_row = QHBoxLayout()
         convo_title_label = QLabel("Conversations")
         convo_title_label.setObjectName("mutedLabel")
         convo_header_row.addWidget(convo_title_label)
         convo_header_row.addStretch()
-        new_convo_button = QPushButton("🆕")
-        new_convo_button.setMaximumWidth(32)
+        new_convo_button = QPushButton("+ New")
+        self.new_convo_button = new_convo_button
+        new_convo_button.setMaximumWidth(64)
         new_convo_button.setToolTip("Start a new conversation")
         new_convo_button.clicked.connect(self.new_conversation_action)
         convo_header_row.addWidget(new_convo_button)
@@ -784,7 +892,7 @@ class WebAgentGUI(QMainWindow):
         outer_layout.addWidget(convo_panel)
 
         main_layout = QVBoxLayout()
-        main_layout.setSpacing(10)
+        main_layout.setSpacing(12)
         outer_layout.addLayout(main_layout, 1)
 
         # Header - one toolbar panel, two organized rows (title/agent/actions,
@@ -794,16 +902,24 @@ class WebAgentGUI(QMainWindow):
         header_frame = QFrame()
         header_frame.setObjectName("toolbar")
         header_frame_layout = QVBoxLayout(header_frame)
-        header_frame_layout.setContentsMargins(14, 10, 14, 10)
-        header_frame_layout.setSpacing(10)
+        header_frame_layout.setContentsMargins(18, 14, 18, 14)
+        header_frame_layout.setSpacing(12)
 
         title_row = QHBoxLayout()
         title_row.setSpacing(8)
-        title_label = QLabel("💬 WebAgent")
-        title_font = QFont("Arial", 16, QFont.Weight.Bold)
+        title_label = QLabel("Gnosis")
+        title_font = QFont(QApplication.font())
+        title_font.setPointSize(18)
+        title_font.setWeight(QFont.Weight.DemiBold)
         title_label.setFont(title_font)
         title_label.setObjectName("titleLabel")
         title_row.addWidget(title_label)
+        self.history_button = QPushButton("History")
+        self.history_button.setCheckable(True)
+        self.history_button.setChecked(True)
+        self.history_button.setToolTip("Show or hide saved conversations")
+        self.history_button.toggled.connect(self._toggle_chat_history)
+        title_row.addWidget(self.history_button)
         title_row.addStretch()
 
         title_row.addWidget(QLabel("Agent:"))
@@ -822,16 +938,26 @@ class WebAgentGUI(QMainWindow):
         self.current_agent_label.setObjectName("mutedLabel")
         title_row.addWidget(self.current_agent_label)
 
-        title_row.addWidget(QLabel("Model:"))
+        model_row = QHBoxLayout()
+        model_row.addWidget(QLabel("Model:"))
         self.model_combo = QComboBox()
         self.model_combo.setToolTip(
-            "Pick a specific local Ollama model to use for every chat message, "
+            "Pick a local Ollama or connected cloud model for chat messages, "
             "overriding the mode toggles below. 'Auto' restores mode-based selection "
             "(Web/Think/Unfiltered/Code)."
         )
         self._populate_model_combo()
         self.model_combo.currentIndexChanged.connect(self.set_model_override)
-        title_row.addWidget(self.model_combo)
+        model_row.addWidget(self.model_combo, 1)
+        cloud_button = QPushButton("Cloud models…")
+        cloud_button.clicked.connect(self.open_cloud_models)
+        model_row.addWidget(cloud_button)
+        knowledge_button = QPushButton("Knowledge…")
+        knowledge_button.clicked.connect(self.open_knowledge_settings)
+        model_row.addWidget(knowledge_button)
+        memory_button = QPushButton("Memory…")
+        memory_button.clicked.connect(self.open_chat_memory)
+        model_row.addWidget(memory_button)
 
         diff_review_button = QPushButton("📋 Diff Review")
         diff_review_button.setToolTip(
@@ -839,9 +965,10 @@ class WebAgentGUI(QMainWindow):
             "point at a folder/zip to review the whole codebase directly."
         )
         diff_review_button.clicked.connect(self.open_diff_review)
-        title_row.addWidget(diff_review_button)
+        model_row.addWidget(diff_review_button)
 
         clear_button = QPushButton("🗑️")
+        self.clear_chat_button = clear_button
         clear_button.setObjectName("clearButton")
         clear_button.setMaximumWidth(40)
         clear_button.setToolTip("Clear chat")
@@ -849,6 +976,7 @@ class WebAgentGUI(QMainWindow):
         title_row.addWidget(clear_button)
 
         header_frame_layout.addLayout(title_row)
+        header_frame_layout.addLayout(model_row)
 
         def toggle_button(text, tooltip=None):
             button = QPushButton(text)
@@ -856,100 +984,144 @@ class WebAgentGUI(QMainWindow):
             button.setCheckable(True)
             if tooltip:
                 button.setToolTip(tooltip)
+            self._mode_buttons.append(button)
             return button
 
-        def separator():
-            line = QFrame()
-            line.setFrameShape(QFrame.Shape.VLine)
-            line.setObjectName("toggleSeparator")
-            return line
-
-        toggles_row = QHBoxLayout()
+        self._mode_buttons = []
+        self._mode_columns = 6
+        toggles_row = QGridLayout()
+        self._mode_grid = toggles_row
         toggles_row.setSpacing(6)
 
-        self.voice_check = toggle_button("🎤 Voice")
+        self.voice_check = toggle_button("🎤 Voice chat", tooltip="Start a hands-free voice conversation with a live transcript")
         self.voice_check.toggled.connect(self.toggle_voice_mode)
         if not webagent.has_speech_recognition:
             self.voice_check.setEnabled(False)
             self.voice_check.setToolTip("Speech recognition is unavailable when SpeechRecognition is not installed.")
-        toggles_row.addWidget(self.voice_check)
+        toggles_row.addWidget(self.voice_check, 0, 0)
 
         self.tts_check = toggle_button("🔊 TTS")
         self.tts_check.toggled.connect(self.toggle_tts_mode)
         if not webagent.has_tts_backend():
             self.tts_check.setEnabled(False)
             self.tts_check.setToolTip("No supported TTS backend is available.")
-        toggles_row.addWidget(self.tts_check)
-
-        toggles_row.addWidget(separator())
+        toggles_row.addWidget(self.tts_check, 0, 1)
 
         self.web_search_check = toggle_button("🔍 Web")
         self.web_search_check.toggled.connect(self.toggle_web_search)
         self.web_search_check.setChecked(webagent.context.web_search_mode)
-        toggles_row.addWidget(self.web_search_check)
+        toggles_row.addWidget(self.web_search_check, 0, 2)
 
         self.deep_think_check = toggle_button(
             "🔬 Think", tooltip="Research multiple sources and return a structured analytical brief."
         )
         self.deep_think_check.toggled.connect(self.toggle_deep_think_mode)
-        toggles_row.addWidget(self.deep_think_check)
-
-        toggles_row.addWidget(separator())
+        toggles_row.addWidget(self.deep_think_check, 0, 3)
 
         self.unfiltered_check = toggle_button("🕵️ Unfiltered")
         self.unfiltered_check.toggled.connect(self.toggle_unfiltered_mode)
-        toggles_row.addWidget(self.unfiltered_check)
+        toggles_row.addWidget(self.unfiltered_check, 0, 4)
 
         self.coding_check = toggle_button("💻 Code")
         self.coding_check.toggled.connect(self.toggle_coding_mode)
-        toggles_row.addWidget(self.coding_check)
-
-        toggles_row.addStretch()
+        toggles_row.addWidget(self.coding_check, 0, 5)
+        for column in range(6):
+            toggles_row.setColumnStretch(column, 1)
         header_frame_layout.addLayout(toggles_row)
 
         main_layout.addWidget(header_frame)
+
+        self.voice_panel = VoicePanel()
+        self.voice_panel.mute_requested.connect(self.voice_session.mute)
+        self.voice_panel.interrupt_requested.connect(self.interrupt_voice_chat)
+        self.voice_panel.end_requested.connect(self.end_voice_chat)
+        self.voice_panel.settings_requested.connect(self.open_voice_settings)
+        main_layout.addWidget(self.voice_panel)
 
         # Chat display area - conversational style
         self.chat_display = QTextBrowser()
         self.chat_display.setObjectName("chatDisplay")
         self.chat_display.setReadOnly(True)
-        self.chat_display.setOpenExternalLinks(True)
-        main_layout.addWidget(self.chat_display)
+        self.chat_display.setOpenExternalLinks(False)
+        self.chat_display.setOpenLinks(False)
+        self.chat_display.anchorClicked.connect(self._open_chat_source)
+        self._source_inspections = {}
+        self.chat_display.document().setDocumentMargin(16)
+        self.interest_dashboard = SubscriptionDashboard()
+        self.interest_dashboard.manage_requested.connect(lambda: self.nav_list.setCurrentRow(5))
+        self.interest_dashboard.prompt_requested.connect(self._draft_interest_question)
+        self.interest_dashboard.refresh_requested.connect(self._refresh_interest_updates)
+        self.chat_surfaces = QStackedWidget()
+        self.chat_surfaces.addWidget(self.interest_dashboard)
+        self.chat_surfaces.addWidget(self.chat_display)
+        main_layout.addWidget(self.chat_surfaces, 1)
+        self.chat_display.document().contentsChanged.connect(self._sync_chat_dashboard)
+        self._sync_chat_dashboard()
+        scrollbar = self.chat_display.verticalScrollBar()
+        scrollbar.valueChanged.connect(self._on_chat_scroll)
+        scrollbar.rangeChanged.connect(self._on_chat_range_changed)
 
-        # Transient status line ("Searching the web...", "Verifying facts...")
-        # shown between sending a message and the reply starting to stream -
-        # see ResponseWorker.status / webagent.chat_response's on_status.
+        self.reply_actions_widget = QWidget()
+        actions = QHBoxLayout(self.reply_actions_widget)
+        actions.setContentsMargins(0, 0, 0, 0)
+        self.copy_reply_button = QPushButton("Copy reply")
+        self.copy_reply_button.setToolTip("Copy the latest reply")
+        self.copy_reply_button.clicked.connect(self.copy_last_reply)
+        actions.addWidget(self.copy_reply_button)
+        self.retry_reply_button = QPushButton("Retry reply")
+        self.retry_reply_button.setToolTip("Replace the last exchange with a new reply")
+        self.retry_reply_button.clicked.connect(self.retry_last_reply)
+        actions.addWidget(self.retry_reply_button)
+        self.edit_prompt_button = QPushButton("Edit last prompt")
+        self.edit_prompt_button.clicked.connect(self.edit_last_prompt)
+        actions.addWidget(self.edit_prompt_button)
+        actions.addStretch()
+        self.jump_latest_button = QPushButton("Jump to latest")
+        self.jump_latest_button.clicked.connect(self.jump_to_latest)
+        self.jump_latest_button.hide()
+        actions.addWidget(self.jump_latest_button)
+        main_layout.addWidget(self.reply_actions_widget)
+        self._update_reply_actions()
+
+        # Activity phase and elapsed time remain visible throughout the turn.
         self.chat_status_label = self._muted_label("")
         self.chat_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.chat_status_label)
 
-        # Input area - compact and clean
+        composer = QFrame()
+        composer.setObjectName("composer")
+        composer.setFixedHeight(112)
+        composer_layout = QVBoxLayout(composer)
+        composer_layout.setContentsMargins(14, 10, 14, 10)
+        composer_layout.setSpacing(4)
         input_layout = QHBoxLayout()
-        input_layout.setSpacing(8)
+        input_layout.setSpacing(12)
 
         self.input_text = QTextEdit()
         self.input_text.setObjectName("inputText")
-        self.input_text.setMaximumHeight(50)
-        self.input_text.setPlaceholderText("Type your message... (Ctrl+Enter to send)")
+        self.input_text.setFixedHeight(64)
+        self.input_text.setAcceptRichText(False)
+        self.input_text.setPlaceholderText("Message Gnosis…")
         self.input_text.installEventFilter(self)
         input_layout.addWidget(self.input_text)
 
         self.send_button = QPushButton("Send")
         self.send_button.setObjectName("sendButton")
-        self.send_button.setMaximumWidth(80)
-        self.send_button.setMinimumHeight(50)
+        self.send_button.setFixedSize(76, 42)
         self.send_button.clicked.connect(self.on_send_button_clicked)
         input_layout.addWidget(self.send_button)
 
-        main_layout.addLayout(input_layout)
+        composer_layout.addLayout(input_layout)
 
         # Hint label
-        hint_label = QLabel("💡 Ctrl+Enter to send")
+        hint_label = QLabel("Ctrl+Enter to send")
         hint_label.setObjectName("mutedLabel")
-        hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        main_layout.addWidget(hint_label)
+        hint_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        composer_layout.addWidget(hint_label)
+        main_layout.addWidget(composer)
 
         self._refresh_conversation_list()
+        self._sync_chat_dashboard()
 
         return central_wrapper
 
@@ -1314,21 +1486,16 @@ class WebAgentGUI(QMainWindow):
             self._refresh_activity_log()
 
     def _build_subscriptions_page(self):
-        """Manage user-declared subscriptions (core/subscriptions.py): rows
-        of preset buttons per category (SUBSCRIPTION_CATALOG), each already
-        wired to a known source, plus a validated free-text section for
-        Weather (no fixed source list applies there). A message matching a
-        subscribed source skips per-message regex/model guessing - see
-        webagent.py's _subscription_bypass (wired into
-        model_directed_web_research)."""
+        """Manage categorized interests with custom subjects, sources,
+        sports teams, and validated weather locations."""
         page = QWidget()
         outer_layout = QVBoxLayout(page)
         outer_layout.setContentsMargins(15, 15, 15, 15)
         outer_layout.setSpacing(10)
         outer_layout.addWidget(self._section_title("🔔 Subscriptions"))
         outer_layout.addWidget(self._muted_label(
-            "Sources you follow, by category. A message matching one of these skips "
-            "per-message guessing and goes straight to a known source."
+            "Make this space yours. Follow favorite teams, subjects, sources, and places "
+            "to shape your welcome dashboard."
         ))
 
         self.subscription_status_label = self._muted_label("")
@@ -1340,10 +1507,11 @@ class WebAgentGUI(QMainWindow):
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setSpacing(18)
 
+        scroll_layout.addWidget(self._build_custom_interest_section())
         self.subscription_catalog_buttons = {}  # (type, name) -> QPushButton
         for category, items in SUBSCRIPTION_CATALOG.items():
             scroll_layout.addWidget(self._build_subscription_category_section(category, items))
-            if category == "Sports Leagues":  # Weather sits between Sports Leagues and Entertainment
+            if category == "Sports":
                 scroll_layout.addWidget(self._build_weather_subscription_section())
         scroll_layout.addStretch()
 
@@ -1352,6 +1520,7 @@ class WebAgentGUI(QMainWindow):
 
         self._refresh_subscription_buttons()
         self._refresh_weather_subscriptions()
+        self._refresh_followed_interests()
         return page
 
     def _build_games_page(self):
@@ -1641,12 +1810,108 @@ class WebAgentGUI(QMainWindow):
         toggle.setText(f"{'▼' if checked else '▶'}  {title}")
         content.setVisible(checked)
 
+    def _track_subscription_worker(self, worker):
+        self._subscription_workers.append(worker)
+        def finished():
+            if worker in self._subscription_workers:
+                self._subscription_workers.remove(worker)
+            if self._close_requested:
+                QTimer.singleShot(0, self.close)
+        worker.finished.connect(finished)
+
+    def _build_custom_interest_section(self):
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._muted_label("Follow any subject you like—an artist, hobby, league, destination, or local issue. Add a website if you prefer a specific source."))
+        row = QHBoxLayout()
+        self.interest_category_combo = QComboBox()
+        for key, label in INTEREST_CATEGORIES.items():
+            if key != "weather":
+                self.interest_category_combo.addItem(label, key)
+        self.interest_category_combo.setCurrentIndex(self.interest_category_combo.findData("other"))
+        self.interest_name_input = QLineEdit()
+        self.interest_name_input.setPlaceholderText("What interests you?")
+        row.addWidget(self.interest_category_combo)
+        row.addWidget(self.interest_name_input, 1)
+        layout.addLayout(row)
+        self.interest_keywords_input = QLineEdit()
+        self.interest_keywords_input.setPlaceholderText("Optional aliases, separated by commas (e.g. F1, Formula One)")
+        layout.addWidget(self.interest_keywords_input)
+        row = QHBoxLayout()
+        self.interest_url_input = QLineEdit()
+        self.interest_url_input.setPlaceholderText("Optional website URL (https://…)")
+        self.interest_add_button = QPushButton("Follow interest")
+        self.interest_add_button.clicked.connect(self._add_custom_interest)
+        row.addWidget(self.interest_url_input, 1)
+        row.addWidget(self.interest_add_button)
+        layout.addLayout(row)
+        layout.addWidget(self._muted_label("Your followed topics and sources · Click × to unfollow"))
+        self.followed_interest_grid = QGridLayout()
+        layout.addLayout(self.followed_interest_grid)
+        return self._build_collapsible_section("Your interests", content)
+
+    def _add_custom_interest(self):
+        name = self.interest_name_input.text().strip()
+        category = self.interest_category_combo.currentData()
+        keywords = self.interest_keywords_input.text().split(",")
+        url = self.interest_url_input.text().strip()
+        def added(record):
+            for field in (self.interest_name_input, self.interest_keywords_input, self.interest_url_input):
+                field.clear()
+            self.subscription_status_label.setText(f'Following "{record["name"]}".')
+            self._refresh_subscription_buttons()
+        if not url:
+            try:
+                added(webagent.add_interest_subscription(name, category, keywords=keywords))
+            except ValueError as error:
+                self.subscription_status_label.setText(str(error))
+            return
+        self.interest_add_button.setEnabled(False)
+        fields = (self.interest_name_input, self.interest_keywords_input, self.interest_url_input, self.interest_category_combo)
+        for field in fields:
+            field.setEnabled(False)
+        self.subscription_status_label.setText("Checking the website…")
+        worker = CycleWorker(lambda: webagent.add_interest_subscription(name, category, keywords=keywords, url=url))
+        self._track_subscription_worker(worker)
+        worker.result_ready.connect(added)
+        worker.error_occurred.connect(self.subscription_status_label.setText)
+        def finished():
+            self.interest_add_button.setEnabled(True)
+            for field in fields:
+                field.setEnabled(True)
+        worker.finished.connect(finished)
+        worker.start()
+
+    def _refresh_followed_interests(self):
+        if not hasattr(self, "followed_interest_grid"):
+            return
+        while self.followed_interest_grid.count():
+            taken = self.followed_interest_grid.takeAt(0)
+            if taken.widget():
+                taken.widget().deleteLater()
+        records = [record for record in subscriptions.list_subscriptions() if record.get("type") in ("topic", "website")]
+        for index, record in enumerate(sorted(records, key=lambda record: (category_for(record), record["name"].casefold()))):
+            button = QPushButton(f'{record["name"][:60]} · {INTEREST_CATEGORIES[category_for(record)]} ×')
+            button.setToolTip(f'Unfollow {record["name"]}')
+            button.clicked.connect(lambda checked=False, key=record["id"]: self._remove_followed_interest(key))
+            self.followed_interest_grid.addWidget(button, index // 2, index % 2)
+        if not records:
+            self.followed_interest_grid.addWidget(self._muted_label("Choose a suggestion below or add your own interest."), 0, 0)
+
+    def _remove_followed_interest(self, subscription_id):
+        subscriptions.remove_subscription(subscription_id)
+        self._refresh_subscription_buttons()
+        self.subscription_status_label.setText("Interest unfollowed.")
+
     def _build_subscription_category_section(self, category, items):
         content = QWidget()
-        grid = QGridLayout(content)
-        grid.setContentsMargins(0, 0, 0, 0)
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        grid = QGridLayout()
         grid.setSpacing(8)
-        columns = 4
+        layout.addLayout(grid)
+        columns = 3
         for index, item in enumerate(items):
             button = QPushButton(item["name"])
             button.setObjectName("subscriptionButton")
@@ -1657,7 +1922,9 @@ class WebAgentGUI(QMainWindow):
             )
             self.subscription_catalog_buttons[(item["type"], item["name"])] = button
             grid.addWidget(button, index // columns, index % columns)
-        return self._build_collapsible_section(category, content)
+        if category == "Sports":
+            layout.addWidget(self._build_sports_subscription_section(collapsible=False))
+        return self._build_collapsible_section(category, content, expanded=category in ("News", "Sports", "Entertainment"))
 
     def _build_weather_subscription_section(self):
         content = QWidget()
@@ -1683,6 +1950,119 @@ class WebAgentGUI(QMainWindow):
         layout.addLayout(self.weather_grid)
         return self._build_collapsible_section("Weather", content)
 
+    def _build_sports_subscription_section(self, collapsible=True):
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        layout.addWidget(self._muted_label('Pick a league, load its teams, and follow your favorites for results and upcoming games.'))
+        row = QHBoxLayout()
+        self.sports_league_combo = QComboBox()
+        for key, (label, sport, slug) in core_sports.LEAGUES.items():
+            self.sports_league_combo.addItem(label, key)
+        self.sports_league_combo.currentIndexChanged.connect(self._sports_league_changed)
+        row.addWidget(self.sports_league_combo, 1)
+        self.sports_load_button = QPushButton('Load teams')
+        self.sports_load_button.clicked.connect(self._load_sports_teams)
+        row.addWidget(self.sports_load_button)
+        layout.addLayout(row)
+        row = QHBoxLayout()
+        self.sports_team_combo = QComboBox()
+        self.sports_team_combo.setEditable(True)
+        self.sports_team_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.sports_team_combo.setPlaceholderText('Load a league to choose a team')
+        self.sports_team_combo.setEnabled(False)
+        self.sports_team_combo.completer().setFilterMode(Qt.MatchFlag.MatchContains)
+        self.sports_team_combo.completer().setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        row.addWidget(self.sports_team_combo, 1)
+        self.sports_follow_button = QPushButton('Follow team')
+        self.sports_follow_button.setEnabled(False)
+        self.sports_follow_button.clicked.connect(self._follow_sports_team)
+        row.addWidget(self.sports_follow_button)
+        layout.addLayout(row)
+        self.sports_status = self._muted_label('Premier League is selected. Load teams to choose Manchester United or another club.')
+        layout.addWidget(self.sports_status)
+        self.sports_followed_grid = QGridLayout()
+        self.sports_followed_grid.setSpacing(8)
+        layout.addLayout(self.sports_followed_grid)
+        self._refresh_sports_subscriptions()
+        return self._build_collapsible_section('Sports', content) if collapsible else content
+
+    def _sports_league_changed(self):
+        self.sports_team_combo.clear()
+        self.sports_team_combo.setEnabled(False)
+        self.sports_follow_button.setEnabled(False)
+        self.sports_status.setText('Load teams for this league.')
+
+    def _load_sports_teams(self):
+        if self._sports_worker is not None:
+            return
+        key = self.sports_league_combo.currentData()
+        self.sports_league_combo.setEnabled(False)
+        self.sports_load_button.setEnabled(False)
+        self.sports_follow_button.setEnabled(False)
+        self.sports_team_combo.setEnabled(False)
+        self.sports_status.setText('Loading teams…')
+        worker = CycleWorker(lambda: core_sports.list_teams(key))
+        self._sports_worker = worker
+        worker.result_ready.connect(self._on_sports_teams_loaded)
+        worker.error_occurred.connect(lambda message: self.sports_status.setText(message))
+        worker.finished.connect(self._on_sports_directory_finished)
+        worker.start()
+
+    def _on_sports_teams_loaded(self, teams):
+        self.sports_team_combo.clear()
+        for team in teams:
+            self.sports_team_combo.addItem(team['name'], team['id'])
+        index = self.sports_team_combo.findText('Manchester United')
+        if index >= 0:
+            self.sports_team_combo.setCurrentIndex(index)
+        self.sports_team_combo.setEnabled(bool(teams))
+        self.sports_follow_button.setEnabled(bool(teams))
+        self.sports_status.setText(f'{len(teams)} teams loaded. Choose a team to follow.')
+
+    def _on_sports_directory_finished(self):
+        worker = self._sports_worker
+        self._sports_worker = None
+        self.sports_league_combo.setEnabled(True)
+        self.sports_load_button.setEnabled(True)
+        if worker is not None:
+            worker.deleteLater()
+        if self._close_requested:
+            QTimer.singleShot(0, self.close)
+
+    def _follow_sports_team(self):
+        index = self.sports_team_combo.findText(self.sports_team_combo.currentText(), Qt.MatchFlag.MatchFixedString)
+        if index < 0:
+            self.sports_status.setText('Choose a team from the loaded list.')
+            return
+        try:
+            record = webagent.add_sports_team_subscription(self.sports_league_combo.currentData(), self.sports_team_combo.itemData(index))
+        except (ValueError, KeyError, webagent.requests.RequestException) as error:
+            self.sports_status.setText(str(error))
+            return
+        self.sports_status.setText(f"Following {record['name']}.")
+        self._refresh_subscription_buttons()
+
+    def _refresh_sports_subscriptions(self):
+        if not hasattr(self, 'sports_followed_grid'):
+            return
+        while self.sports_followed_grid.count():
+            item = self.sports_followed_grid.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        for index, record in enumerate(subscriptions.list_subscriptions('team')):
+            metadata = record.get('metadata', {})
+            league = metadata.get('league_name') or core_sports.LEAGUE_NAMES.get(metadata.get('league_slug'), 'Team')
+            button = QPushButton(f"{record['name']} · {league} ×")
+            button.setToolTip('Unfollow this team')
+            button.clicked.connect(lambda checked=False, key=record['id']: self._unfollow_sports_team(key))
+            self.sports_followed_grid.addWidget(button, index // 2, index % 2)
+
+    def _unfollow_sports_team(self, subscription_id):
+        subscriptions.remove_subscription(subscription_id)
+        self._refresh_subscription_buttons()
+
     def _set_subscription_button_style(self, button, state):
         """state is "off" (grey - not subscribed) or "on" (green -
         subscribed). A failed subscribe attempt reverts to "off" rather than
@@ -1703,6 +2083,9 @@ class WebAgentGUI(QMainWindow):
             button.setChecked(is_subscribed)
             button.blockSignals(False)
             self._set_subscription_button_style(button, "on" if is_subscribed else "off")
+        self._refresh_interest_dashboard()
+        self._refresh_sports_subscriptions()
+        self._refresh_followed_interests()
 
     def _on_catalog_button_toggled(self, checked, item, button):
         if checked:
@@ -1713,12 +2096,21 @@ class WebAgentGUI(QMainWindow):
     def _subscribe_catalog_item(self, item, button):
         button.setEnabled(False)
         self.subscription_status_label.setText(f'Adding "{item["name"]}"...')
+        if item["type"] == "topic":
+            try:
+                record = webagent.add_interest_subscription(item["name"], item["category"], keywords=item.get("keywords"))
+            except ValueError as error:
+                self._on_catalog_subscribe_error(str(error), button)
+                return
+            self._on_catalog_subscribe_success(record, button)
+            return
         if item["type"] == "website":
-            add_fn = lambda: webagent.add_website_subscription(item["name"], item["url"])  # noqa: E731
+            add_fn = lambda: webagent.add_interest_subscription(item["name"], item["category"], url=item["url"])  # noqa: E731
         else:
             add_fn = lambda: webagent.add_team_subscription(item["name"])  # noqa: E731
 
         self._subscription_worker = CycleWorker(add_fn)
+        self._track_subscription_worker(self._subscription_worker)
         self._subscription_worker.result_ready.connect(
             lambda record, button=button: self._on_catalog_subscribe_success(record, button)
         )
@@ -1731,6 +2123,9 @@ class WebAgentGUI(QMainWindow):
         self.subscription_status_label.setText(f'Subscribed to "{record["name"]}".')
         self._set_subscription_button_style(button, "on")
         button.setEnabled(True)
+        self._refresh_interest_dashboard()
+        self._refresh_sports_subscriptions()
+        self._refresh_followed_interests()
 
     def _on_catalog_subscribe_error(self, message, button):
         self.subscription_status_label.setText(message)
@@ -1748,6 +2143,9 @@ class WebAgentGUI(QMainWindow):
                 self.subscription_status_label.setText(f'Unsubscribed from "{item["name"]}".')
                 break
         self._set_subscription_button_style(button, "off")
+        self._refresh_interest_dashboard()
+        self._refresh_sports_subscriptions()
+        self._refresh_followed_interests()
 
     def _refresh_weather_subscriptions(self):
         while self.weather_grid.count():
@@ -1762,6 +2160,58 @@ class WebAgentGUI(QMainWindow):
             self._set_subscription_button_style(button, "on")  # only ever rendered for an already-subscribed location
             button.clicked.connect(lambda _checked=False, record=record: self._remove_weather_subscription_clicked(record))
             self.weather_grid.addWidget(button, index // columns, index % columns)
+        self._refresh_interest_dashboard()
+
+    def _sync_chat_dashboard(self):
+        empty = self.chat_display.document().isEmpty()
+        self.chat_surfaces.setCurrentWidget(self.interest_dashboard if empty else self.chat_display)
+        if hasattr(self, 'reply_actions_widget'):
+            self.reply_actions_widget.setVisible(not empty)
+        if hasattr(self, 'chat_status_label'):
+            self.chat_status_label.setVisible(not empty)
+        if empty:
+            self._refresh_interest_dashboard()
+
+    def _refresh_interest_dashboard(self):
+        self.interest_dashboard.set_records(subscriptions.list_subscriptions())
+
+    def _on_page_changed(self, index):
+        if index == 0:
+            self._refresh_interest_dashboard()
+
+    def _draft_interest_question(self, prompt):
+        if self._response_active:
+            return
+        self.input_text.setPlainText(prompt)
+        self.input_text.setFocus()
+
+    def _refresh_interest_updates(self):
+        if self._dashboard_worker is not None:
+            self._dashboard_worker.cancel()
+            self.interest_dashboard.refresh_button.setText('Stopping…')
+            self.interest_dashboard.refresh_button.setEnabled(False)
+            return
+        if self._close_requested:
+            return
+        self._refresh_interest_dashboard()
+        records = copy.deepcopy(self.interest_dashboard.records)
+        if not records:
+            return
+        self.interest_dashboard.set_busy(True)
+        worker = DashboardUpdateWorker(records, webagent.get_subscription_dashboard_evidence)
+        self._dashboard_worker = worker
+        worker.updated.connect(self.interest_dashboard.set_update)
+        worker.finished.connect(self._on_interest_updates_finished)
+        worker.start()
+
+    def _on_interest_updates_finished(self):
+        worker = self._dashboard_worker
+        self._dashboard_worker = None
+        self.interest_dashboard.set_busy(False)
+        if worker is not None:
+            worker.deleteLater()
+        if self._close_requested:
+            QTimer.singleShot(0, self.close)
 
     def _add_weather_subscription_clicked(self):
         location = self.weather_location_input.text().strip()
@@ -1772,6 +2222,7 @@ class WebAgentGUI(QMainWindow):
         self.subscription_status_label.setText("Adding...")
         add_fn = lambda: webagent.add_weather_subscription(location)  # noqa: E731
         self._subscription_worker = CycleWorker(add_fn)
+        self._track_subscription_worker(self._subscription_worker)
         self._subscription_worker.result_ready.connect(self._on_weather_subscription_added)
         self._subscription_worker.error_occurred.connect(self._on_weather_subscription_add_error)
         self._subscription_worker.start()
@@ -1812,35 +2263,66 @@ class WebAgentGUI(QMainWindow):
     
     def on_send_button_clicked(self):
         """The Send button doubles as Stop while a response is running."""
-        if self.response_worker is not None and self.response_worker.isRunning():
+        if self._response_active and self.response_worker is not None:
+            if self._voice_turn:
+                self.voice_session.interrupt()
             self.response_worker.cancel()
             self.send_button.setEnabled(False)
-            self.chat_status_label.setText("Stopping...")
+            self._set_chat_activity("Stopping")
         else:
             self.send_message()
 
-    def send_message(self):
+    def send_message(self, user_input=None):
         """Send user message and get AI response"""
-        user_input = self.input_text.toPlainText().strip()
+        if self._response_active:
+            return
+        from_input = user_input is None
+        user_input = (self.input_text.toPlainText() if from_input else user_input).strip()
 
         if not user_input:
             QMessageBox.warning(self, "Empty Input", "Please enter a message.")
             return
 
+        if self._editing_last_turn:
+            self._restore_last_turn()
+            self._editing_last_turn = False
+            self.edit_prompt_button.setText("Edit last prompt")
+        self._voice_turn = self.voice_session.enabled
+        if self._voice_turn:
+            self.voice_session.begin_reply()
+        self._last_turn_context = copy.deepcopy(webagent.context.assistant_convo)
+        self._last_turn_html = self.chat_display.toHtml()
+        self._last_prompt = user_input
+        self._last_reply = ""
+        # Scheduler chat can mutate real cron tasks; its actions aren't replayable.
+        self._last_retry_allowed = webagent.context.current_agent != "scheduler"
+        self._response_active = True
+        self._activity_outcome = "Finished"
+        self._activity_started = time.perf_counter()
+        self._set_chat_activity("Preparing response")
+        self.activity_timer.start()
+        self._update_reply_actions()
+        self.jump_to_latest()
+
         # Display user message
         self.display_message(user_input, is_user=True)
-        self.input_text.clear()
+        if from_input:
+            self.input_text.clear()
 
         # Disable input while processing
         self.input_text.setEnabled(False)
         self.send_button.setText("Stop")
+        self.agent_combo.setEnabled(False)
+        self.conversation_list.setEnabled(False)
+        self.new_convo_button.setEnabled(False)
+        self.clear_chat_button.setEnabled(False)
 
         # Initialize streaming response placeholder
         self.current_response = ""
         self.assistant_message_started = False
         self._pending_sources = None
+        self._assistant_cursor = None
         self.response_start_time = datetime.now()
-        self.chat_status_label.setText("Thinking...")
 
         # Start response worker
         self.response_worker = ResponseWorker(user_input)
@@ -1853,57 +2335,150 @@ class WebAgentGUI(QMainWindow):
         self.response_worker.sources.connect(self.on_sources)
         self.response_worker.start()
 
+    def _set_chat_activity(self, message):
+        self._activity_phase = message.rstrip(". ")
+        self._refresh_chat_activity()
+
+    def _refresh_chat_activity(self):
+        if self._activity_started is None:
+            return
+        elapsed = time.perf_counter() - self._activity_started
+        self.chat_status_label.setText(f"{self._activity_phase} · {elapsed:.1f}s")
+
     def on_chat_status(self, message):
-        """Show a short progress update ("Searching the web...") between
-        sending a message and the reply starting to stream. Cleared once
-        the first real chunk arrives (on_response_chunk) or the turn ends
-        (on_response_finished/on_error)."""
-        self.chat_status_label.setText(message)
+        if self._activity_phase == "Stopping":
+            return
+        # A pending API call may be loading or evaluating; don't guess which.
+        self._set_chat_activity("Waiting for model" if message == "Writing a response..." else message)
+        if self._voice_turn and self.voice_session.enabled and self.voice_session.speaker is None:
+            self.voice_panel.set_phase(self._activity_phase)
+
+    @contextmanager
+    def _chat_scroll_guard(self):
+        scrollbar = self.chat_display.verticalScrollBar()
+        previous = scrollbar.value()
+        selected = self.chat_display.textCursor()
+        selection = (selected.anchor(), selected.position()) if selected.hasSelection() else None
+        was_updating = self._updating_chat
+        self._updating_chat = True
+        try:
+            yield
+        finally:
+            if selection:
+                restored = QTextCursor(self.chat_display.document())
+                restored.setPosition(selection[0])
+                restored.setPosition(selection[1], QTextCursor.MoveMode.KeepAnchor)
+                self.chat_display.setTextCursor(restored)
+            scrollbar.setValue(scrollbar.maximum() if self._follow_latest else previous)
+            self._updating_chat = was_updating
+            self._update_jump_button()
+
+    def _on_chat_scroll(self, value):
+        if not self._updating_chat:
+            scrollbar = self.chat_display.verticalScrollBar()
+            self._follow_latest = scrollbar.maximum() - value <= 24
+            self._update_jump_button()
+
+    def _on_chat_range_changed(self, minimum, maximum):
+        if self._follow_latest:
+            previous = self._updating_chat
+            self._updating_chat = True
+            self.chat_display.verticalScrollBar().setValue(maximum)
+            self._updating_chat = previous
+        self._update_jump_button()
+
+    def _update_jump_button(self, *args):
+        if hasattr(self, "jump_latest_button"):
+            scrollbar = self.chat_display.verticalScrollBar()
+            self.jump_latest_button.setVisible(not self._follow_latest and scrollbar.value() < scrollbar.maximum())
+
+    def jump_to_latest(self):
+        self._follow_latest = True
+        self.chat_display.verticalScrollBar().setValue(self.chat_display.verticalScrollBar().maximum())
+        self._update_jump_button()
+
+    def _update_reply_actions(self):
+        idle = not self._response_active
+        self.copy_reply_button.setEnabled(idle and bool(self._last_reply))
+        can_replace = idle and bool(self._last_prompt) and self._last_turn_context is not None and self._last_retry_allowed
+        self.retry_reply_button.setEnabled(can_replace and not self._editing_last_turn)
+        self.edit_prompt_button.setEnabled(can_replace)
+
+    def copy_last_reply(self):
+        if not self._response_active and self._last_reply:
+            QApplication.clipboard().setText(self._last_reply)
+
+    def _restore_last_turn(self):
+        webagent.context.assistant_convo = copy.deepcopy(self._last_turn_context)
+        self.chat_display.setHtml(self._last_turn_html)
+        self.conversation_saved_length = -1
+        self._pending_sources = None
+        self.jump_to_latest()
+
+    def retry_last_reply(self):
+        if not self.retry_reply_button.isEnabled():
+            return
+        prompt = self._last_prompt
+        self._restore_last_turn()
+        self.send_message(user_input=prompt)
+
+    def edit_last_prompt(self):
+        if not self.edit_prompt_button.isEnabled():
+            return
+        if self._editing_last_turn:
+            self.input_text.setPlainText(self._draft_before_edit)
+            self._editing_last_turn = False
+            self.edit_prompt_button.setText("Edit last prompt")
+        else:
+            self._draft_before_edit = self.input_text.toPlainText()
+            self.input_text.setPlainText(self._last_prompt)
+            self._editing_last_turn = True
+            self.edit_prompt_button.setText("Cancel edit")
+        self.input_text.setFocus()
+        self._update_reply_actions()
+
+    def _reset_reply_actions(self):
+        if self._editing_last_turn:
+            self.input_text.setPlainText(self._draft_before_edit)
+        self._editing_last_turn = False
+        self._last_prompt = ""
+        self._last_reply = ""
+        self._last_turn_context = None
+        self.edit_prompt_button.setText("Edit last prompt")
+        self._update_reply_actions()
+        self.chat_status_label.clear()
+        self.jump_to_latest()
 
     def on_response_chunk(self, chunk):
         """Handle streaming response chunks"""
-        self.current_response += chunk
+        with self._chat_scroll_guard():
+            self.current_response += chunk
+            if self._voice_turn:
+                self.voice_session.feed(chunk)
 
-        if not self.assistant_message_started:
-            self.chat_status_label.setText("")
-            timestamp = self.response_start_time.strftime("%H:%M")
-            cursor = self.chat_display.textCursor()
-            cursor.movePosition(QTextCursor.MoveOperation.End)
-            if not self.chat_display.document().isEmpty():
-                cursor.insertBlock()
-                cursor.setBlockFormat(QTextBlockFormat())
-                cursor.setCharFormat(QTextCharFormat())
-            cursor.insertHtml(
-                f'<div style="margin: 14px 0;"><span style="color: {ACCENT_LIGHT}; font-weight: bold;">Assistant</span> '
-                f'<span style="color: {TEXT_MUTED}; font-size: 11px;">{timestamp}</span><br/>'
-                f'<div style="background-color: {BG_BUBBLE_ASSISTANT}; border-radius: 10px; padding: 10px 12px; '
-                f'margin-top: 4px; color: {TEXT_PRIMARY};">'
-            )
-            self.assistant_message_started = True
+            if not self.assistant_message_started:
+                self._set_chat_activity("Replying")
+                self._assistant_cursor = self._insert_message_card(False, self.response_start_time)
+                self.assistant_message_started = True
 
-        cursor = self.chat_display.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        cursor.insertText(chunk)
-        self.chat_display.setTextCursor(cursor)
-        self.chat_display.ensureCursorVisible()
+            self._assistant_cursor.insertText(chunk)
 
     def on_response_ready(self, response):
         """Handle complete AI response"""
-        # Close the div tag for the assistant message
-        cursor = self.chat_display.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        cursor.insertHtml('</div></div>')
-        self.chat_display.setTextCursor(cursor)
+        with self._chat_scroll_guard():
+            self._assistant_cursor = None
+            self.assistant_message_started = False
 
-        # Response already displayed via streaming, just reset state
-        self.current_response = ""
+            # Keep the plain reply for copying, excluding sources and decoration.
+            self._last_reply = response
+            self.current_response = ""
 
-        # None means this wasn't a research turn (say nothing); [] means
-        # web search/Deep Think ran and found nothing real - render that
-        # distinctly rather than silently, which is the whole point of this.
-        if self._pending_sources is not None:
-            self._render_sources(self._pending_sources)
-            self._pending_sources = None
+            # None means this wasn't a research turn (say nothing); [] means
+            # web search/Deep Think ran and found nothing real - render that
+            # distinctly rather than silently, which is the whole point of this.
+            if self._pending_sources is not None:
+                self._render_sources(self._pending_sources)
+                self._pending_sources = None
 
     def on_sources(self, sources):
         """Buffers the evidence list for this turn. Fires before the assistant
@@ -1913,66 +2488,132 @@ class WebAgentGUI(QMainWindow):
         bubble is closed."""
         self._pending_sources = sources
 
-    def _render_sources(self, sources):
-        cursor = self.chat_display.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-
-        if not sources:
-            cursor.insertHtml(
-                f'<div style="margin: 2px 0 14px 0; font-size: 12px; color: {TEXT_MUTED};">'
-                f'⚠️ No live web results for this answer - it is not backed by fresh search data.</div>'
-            )
-            self.chat_display.setTextCursor(cursor)
+    def _open_chat_source(self, url):
+        if url.scheme() != "evidence":
+            if url.scheme() in ("http", "https"):
+                QDesktopServices.openUrl(url)
             return
+        source = self._source_inspections.get(url.path())
+        if source is None:
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Evidence behind this reply")
+        dialog.resize(720, 520)
+        layout = QVBoxLayout(dialog)
+        view = QTextBrowser()
+        view.setOpenExternalLinks(True)
+        provenance = source.get("provenance") or {}
+        details = {
+            "Source": source.get("title"),
+            "Original URL": provenance.get("url") or source.get("url"),
+            "Origin": provenance.get("origin") or source.get("search_provider"),
+            "Captured": source.get("captured_at") or "Unknown",
+            "Date basis": provenance.get("date_basis") or "Source capture",
+            "Published": provenance.get("published_at") or source.get("published_at") or "Unknown",
+            "Verification": source.get("verification_status") or "Not independently verified",
+            "Retrieval": provenance.get("retrieval_method") or "Selected by research tools",
+            "Matched terms": ", ".join(provenance.get("matched_terms", [])),
+            "Query coverage": provenance.get("coverage"),
+            "Semantic similarity": provenance.get("semantic_similarity"),
+            "Embedding status": provenance.get("embedding_status"),
+        }
+        header = "".join(f"<p><b>{html.escape(k)}:</b> {html.escape(str(v or 'Unknown'))}</p>" for k, v in details.items())
+        view.setHtml(header + "<hr><b>Evidence passage</b><pre style='white-space:pre-wrap'>" +
+                     html.escape(str(source.get("content") or source.get("snippet") or "No passage retained.")) + "</pre>")
+        layout.addWidget(view)
+        close = QPushButton("Close")
+        close.clicked.connect(dialog.accept)
+        layout.addWidget(close)
+        dialog.exec()
 
-        items = []
-        for result in sources[:8]:
-            title = html.escape(str(result.get('title') or result.get('url') or 'Source'))
-            url = result.get('url') or ''
-            confidence = result.get('truthfulness_confidence')
-            conf_text = f' (confidence {confidence}/100)' if isinstance(confidence, (int, float)) else ''
-            if url:
-                items.append(f'<li><a href="{html.escape(url)}" style="color: {ACCENT_LIGHT};">{title}</a>{conf_text}</li>')
-            else:
-                items.append(f'<li>{title}{conf_text}</li>')
+    def _render_sources(self, sources):
+        with self._chat_scroll_guard():
+            cursor = QTextCursor(self.chat_display.document())
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            cursor.insertBlock()
+            cursor.setBlockFormat(QTextBlockFormat())
+            cursor.setCharFormat(QTextCharFormat())
 
-        cursor.insertHtml(
-            f'<div style="margin: 2px 0 14px 0; font-size: 12px; color: {TEXT_SECONDARY};">'
-            f'<b>Sources:</b><ul style="margin: 4px 0 0 0; padding-left: 18px;">{"".join(items)}</ul></div>'
-        )
-        self.chat_display.setTextCursor(cursor)
+            if not sources:
+                cursor.insertHtml(
+                    f'<div style="margin: 2px 0 14px 0; font-size: 12px; color: {TEXT_MUTED};">'
+                    f'⚠️ No live web results for this answer - it is not backed by fresh search data.</div>'
+                )
+                return
+
+            items = []
+            for result in sources[:8]:
+                title = html.escape(str(result.get('title') or result.get('url') or 'Source'))
+                url = (result.get('provenance') or {}).get('url') or result.get('url') or ''
+                key = str(len(self._source_inspections))
+                self._source_inspections[key] = copy.deepcopy(result)
+                inspect_link = f' <a href="evidence:{key}" style="color: {ACCENT_LIGHT};">Inspect evidence</a>'
+                confidence = result.get('truthfulness_confidence')
+                conf_text = f' (source score {confidence}/100)' if isinstance(confidence, (int, float)) else ''
+                if url:
+                    if not str(url).startswith(('http://', 'https://')):
+                        url = 'evidence:' + key
+                    items.append(f'<li><a href="{html.escape(url)}" style="color: {ACCENT_LIGHT};">{title}</a>{conf_text}{inspect_link}</li>')
+                else:
+                    items.append(f'<li>{title}{conf_text}{inspect_link}</li>')
+
+            cursor.insertHtml(
+                f'<div style="margin: 2px 0 14px 0; font-size: 12px; color: {TEXT_SECONDARY};">'
+                f'<b>Sources:</b><ul style="margin: 4px 0 0 0; padding-left: 18px;">{"".join(items)}</ul></div>'
+            )
 
     def on_response_finished(self):
         """Handle response completion - always fires (success, error, or a
         user-initiated stop), so this is the one place that resets the
         Send/Stop button regardless of how the turn ended."""
-        self.chat_status_label.setText("")
+        self._response_active = False
+        self.activity_timer.stop()
+        self._set_chat_activity(self._activity_outcome)
+        self._update_reply_actions()
         self.input_text.setEnabled(True)
         self.input_text.setFocus()
         self.send_button.setText("Send")
         self.send_button.setEnabled(True)
+        self.agent_combo.setEnabled(True)
+        self.conversation_list.setEnabled(True)
+        self.new_convo_button.setEnabled(True)
+        self.clear_chat_button.setEnabled(True)
+        if self._voice_turn:
+            self.voice_session.finish_reply(success=self._activity_outcome == "Finished")
+            self._voice_turn = False
+        if self._close_requested:
+            QTimer.singleShot(0, self.close)
 
     def on_response_cancelled(self):
         """A deliberate, user-initiated stop - distinct from on_error so it
         doesn't pop an alarming error dialog for something the user asked
         for. Whatever streamed before the stop stays on screen."""
-        cursor = self.chat_display.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        if self.assistant_message_started:
-            cursor.insertHtml('</div></div>')
-        cursor.insertHtml(
-            f'<div style="margin: 0 0 14px 0; font-size: 12px; color: {TEXT_MUTED}; font-style: italic;">Stopped.</div>'
-        )
-        self.chat_display.setTextCursor(cursor)
-        self.current_response = ""
+        with self._chat_scroll_guard():
+            cursor = QTextCursor(self.chat_display.document())
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            self._assistant_cursor = None
+            self.assistant_message_started = False
+            cursor.insertHtml(
+                f'<div style="margin: 0 0 14px 0; font-size: 12px; color: {TEXT_MUTED}; font-style: italic;">Stopped.</div>'
+            )
+            self._last_reply = self.current_response
+            self._activity_outcome = "Stopped"
+            self.current_response = ""
 
     def on_error(self, error_msg):
         """Handle errors"""
-        self.chat_status_label.setText("")
+        if self._voice_turn:
+            self.voice_session.cancel_audio()
+        self._last_reply = self.current_response
+        self._activity_outcome = "Failed"
+        self._set_chat_activity("Failed")
         QMessageBox.critical(self, "Error", error_msg)
         self.input_text.setEnabled(True)
 
     def set_agent(self):
+        if self._response_active:
+            return
+        self._reset_reply_actions()
         selected = self.agent_combo.currentText()
         result = webagent.job_command(selected if selected != "default" else "default")
         self.current_agent_label.setText(f"Current: {selected}")
@@ -1988,16 +2629,174 @@ class WebAgentGUI(QMainWindow):
         default with nothing selected."""
         self.model_combo.blockSignals(True)
         self.model_combo.clear()
-        self.model_combo.addItem("Auto (mode-based)")
+        self.model_combo.addItem("Auto (mode-based)", None)
         for tag in core_models.list_installed():
-            self.model_combo.addItem(tag)
+            self.model_combo.addItem(tag, tag)
+        for model in cloud_models.configured_models():
+            provider, _, model_id = model.partition(":")
+            self.model_combo.addItem(f"{cloud_models.PROVIDERS[provider][0]} · {model_id}", model)
+        selected = self.model_combo.findData(webagent.context.selected_model)
+        self.model_combo.setCurrentIndex(max(0, selected))
         self.model_combo.blockSignals(False)
+
+    def open_chat_memory(self):
+        agent = webagent.context.current_agent or "default"
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Conversation memory · {agent}")
+        dialog.resize(640, 480)
+        layout = QVBoxLayout(dialog)
+        note = QLabel("Review saved conversation notes. Pin useful notes to retain them, edit corrections, or forget an entry.")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        listing = QListWidget()
+        editor = QTextEdit()
+        editor.setAcceptRichText(False)
+        layout.addWidget(listing)
+        layout.addWidget(editor)
+        status = QLabel("")
+        layout.addWidget(status)
+        buttons = QHBoxLayout()
+        save = QPushButton("Save edit")
+        pin = QPushButton("Pin / unpin")
+        forget = QPushButton("Forget entry")
+        for button in (save, pin, forget):
+            buttons.addWidget(button)
+        layout.addLayout(buttons)
+        def refresh():
+            listing.clear()
+            for entry in webagent.load_agent_memory(agent):
+                item = QListWidgetItem(("★ " if entry.get("pinned") else "") + str(entry.get("summary", ""))[:160])
+                item.setData(Qt.ItemDataRole.UserRole, entry)
+                listing.addItem(item)
+            if listing.count():
+                listing.setCurrentRow(0)
+            else:
+                editor.clear()
+                status.setText("No saved conversation notes for this agent.")
+            for button in (save, pin, forget):
+                button.setEnabled(bool(listing.count()))
+        def select():
+            item = listing.currentItem()
+            editor.setPlainText(str(item.data(Qt.ItemDataRole.UserRole).get("summary", "")) if item else "")
+        listing.currentItemChanged.connect(lambda *_: select())
+        def update(action):
+            if self._response_active:
+                status.setText("Wait for the current reply to finish before editing memory.")
+                return
+            item = listing.currentItem()
+            if not item:
+                return
+            entry = item.data(Qt.ItemDataRole.UserRole)
+            kwargs = {"summary": editor.toPlainText()} if action == "save" else {"pinned": not entry.get("pinned")} if action == "pin" else {"forget": True}
+            try:
+                webagent.update_agent_memory(agent, entry.get("date"), **kwargs)
+            except (OSError, ValueError) as error:
+                status.setText(str(error))
+                return
+            refresh()
+            status.setText("Memory updated.")
+        save.clicked.connect(lambda: update("save"))
+        pin.clicked.connect(lambda: update("pin"))
+        forget.clicked.connect(lambda: update("forget"))
+        refresh()
+        dialog.exec()
+
+    def open_knowledge_settings(self):
+        from core.knowledge_retrieval import embedding_model, save_embedding_model
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Local knowledge retrieval")
+        layout = QVBoxLayout(dialog)
+        note = QLabel("Search uses ranked passages and local concept matching. For semantic search, choose a dedicated embedding model already installed in Ollama.")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        combo = QComboBox()
+        combo.setEditable(True)
+        combo.addItem("Keyword search only", "")
+        for model in core_models.list_installed():
+            combo.addItem(model, model)
+        current = embedding_model(core_config.project_root())
+        if current:
+            combo.setCurrentText(current)
+        layout.addWidget(combo)
+        status = QLabel("Embedding models run locally. If unavailable, search falls back to keywords.")
+        status.setWordWrap(True)
+        layout.addWidget(status)
+        save = QPushButton("Save")
+        def apply():
+            model = "" if combo.currentText() == "Keyword search only" else combo.currentText().strip()
+            try:
+                save_embedding_model(core_config.project_root(), model)
+            except OSError as error:
+                status.setText(f"Could not save settings: {error}")
+                return
+            dialog.accept()
+        save.clicked.connect(apply)
+        layout.addWidget(save)
+        dialog.exec()
+
+    def open_cloud_models(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Connect cloud models")
+        dialog.setMinimumWidth(480)
+        layout = QVBoxLayout(dialog)
+        note = QLabel(
+            "Connect with an OpenAI or Anthropic API key and model ID. "
+            "API usage has separate billing from ChatGPT / Claude subscriptions. "
+            "Cloud chat sends conversation, persona, and relevant saved context to the provider. "
+            "Keys entered here are kept only for this session."
+        )
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        provider = QComboBox()
+        for name, details in cloud_models.PROVIDERS.items():
+            provider.addItem(details[0], name)
+        layout.addWidget(provider)
+        layout.addWidget(QLabel("API key"))
+        key = QLineEdit()
+        key.setEchoMode(QLineEdit.EchoMode.Password)
+        layout.addWidget(key)
+        layout.addWidget(QLabel("Model ID"))
+        model = QLineEdit()
+        model.setPlaceholderText("Enter the chat model ID from your provider")
+        layout.addWidget(model)
+        links = QLabel('<a href="https://platform.openai.com/api-keys">OpenAI API keys</a> · '
+                       '<a href="https://console.anthropic.com/settings/keys">Claude API keys</a>')
+        links.setOpenExternalLinks(True)
+        layout.addWidget(links)
+        status = QLabel("")
+        status.setWordWrap(True)
+        layout.addWidget(status)
+        def load_provider():
+            current_key, current_model = cloud_models.settings(provider.currentData())
+            key.setText(current_key)
+            model.setText(current_model)
+            status.clear()
+        provider.currentIndexChanged.connect(load_provider)
+        load_provider()
+        buttons = QHBoxLayout()
+        connect = QPushButton("Use cloud model")
+        cancel = QPushButton("Cancel")
+        buttons.addWidget(connect)
+        buttons.addWidget(cancel)
+        layout.addLayout(buttons)
+        def save():
+            try:
+                selected = cloud_models.configure(provider.currentData(), key.text(), model.text())
+            except ValueError as exc:
+                status.setText(str(exc))
+                return
+            webagent.context.selected_model = selected
+            self._populate_model_combo()
+            dialog.accept()
+        connect.clicked.connect(save)
+        cancel.clicked.connect(dialog.reject)
+        dialog.exec()
 
     def set_model_override(self, index):
         if index <= 0:
             webagent.context.selected_model = None
         else:
-            webagent.context.selected_model = self.model_combo.currentText()
+            webagent.context.selected_model = self.model_combo.currentData()
         self._prewarm_model_for_current_modes()
 
     def toggle_unfiltered_mode(self, checked):
@@ -2022,54 +2821,90 @@ class WebAgentGUI(QMainWindow):
         if webagent.ollama is None:
             return
         model_name = webagent._selected_model()
-        worker = CycleWorker(lambda: webagent.model_chat(model=model_name, messages=[]))
-        self._warmup_workers.append(worker)
+        if cloud_models.is_cloud(model_name):
+            return
+        if self._daytime.paused or self._daytime.closed:
+            return
+        key = "warmup:" + model_name
+        if self._warmup_key and self._warmup_key != key:
+            self._daytime.pool.cancel(self._warmup_key)
+        self._warmup_key = key
+        options = core_models.thinking_options(
+            model_name, webagent.context.reasoning_mode or webagent.context.deep_think_mode)
+        def warmup(token):
+            with core_models.request_control(token.check):
+                return webagent.model_chat(model=model_name, messages=[], **options)
+        self._daytime.pool.submit(key, warmup, priority=5)
 
-        def _cleanup():
-            if worker in self._warmup_workers:
-                self._warmup_workers.remove(worker)
-        worker.finished.connect(_cleanup)
-        worker.start()
+    def _pause_background(self, paused):
+        self._daytime.pause(paused)
+        self.background_pause.setText("Resume background" if paused else "Pause background")
+        self._tick_background()
+
+    def _tick_background(self):
+        foreground = self._response_active or self.voice_session.enabled
+        self._daytime.tick(foreground=foreground)
+        snapshot = self._daytime.snapshot()
+        if snapshot['paused']:
+            label = "Background: paused"
+        elif foreground:
+            label = "Background: chat/voice has priority"
+        else:
+            label = f"Background: {len(snapshot['active'])} active task(s)"
+        self.background_label.setText(label)
+        self.background_label.setToolTip(json.dumps(snapshot, indent=2))
 
     def open_diff_review(self):
         dialog = DiffReviewDialog(self)
         dialog.exec()
 
-    def display_message(self, text, is_user=True):
-        """Display a message in the chat with conversational styling"""
-        cursor = self.chat_display.textCursor()
+    def _insert_message_card(self, is_user, timestamp=None):
+        """Qt frames provide real padding for both saved and streamed messages."""
+        cursor = QTextCursor(self.chat_display.document())
         cursor.movePosition(QTextCursor.MoveOperation.End)
-        if not self.chat_display.document().isEmpty():
-            cursor.insertBlock()
-            cursor.setBlockFormat(QTextBlockFormat())
-            cursor.setCharFormat(QTextCharFormat())
+        cursor.setBlockFormat(QTextBlockFormat())
+        cursor.setCharFormat(QTextCharFormat())
+        card = QTextFrameFormat()
+        card.setPadding(18)
+        card.setTopMargin(8)
+        card.setBottomMargin(8)
+        card.setLeftMargin(36 if is_user else 0)
+        card.setRightMargin(0 if is_user else 20)
+        card.setBackground(QColor(BG_BUBBLE_USER if is_user else BG_BUBBLE_ASSISTANT))
+        card.setBorder(1)
+        card.setBorderBrush(QColor('#49416c' if is_user else BORDER))
+        card.setBorderStyle(QTextFrameFormat.BorderStyle.BorderStyle_Solid)
+        frame = cursor.insertFrame(card)
+        cursor = frame.firstCursorPosition()
 
-        timestamp = datetime.now().strftime("%H:%M")
-        
-        safe_text = html.escape(text).replace("\n", "<br/>")
-        if is_user:
-            formatted_text = (
-                f'<div style="margin: 14px 0; text-align: right;">'
-                f'<span style="color: {ACCENT_LIGHT}; font-weight: bold;">You</span> '
-                f'<span style="color: {TEXT_MUTED}; font-size: 11px;">{timestamp}</span><br/>'
-                f'<div style="background-color: {BG_BUBBLE_USER}; border-radius: 10px; padding: 10px 12px; '
-                f'margin-top: 4px; color: {TEXT_PRIMARY};">{safe_text}</div></div>'
-            )
-        else:
-            formatted_text = (
-                f'<div style="margin: 14px 0;">'
-                f'<span style="color: {ACCENT_LIGHT}; font-weight: bold;">Assistant</span> '
-                f'<span style="color: {TEXT_MUTED}; font-size: 11px;">{timestamp}</span><br/>'
-                f'<div style="background-color: {BG_BUBBLE_ASSISTANT}; border-radius: 10px; padding: 10px 12px; '
-                f'margin-top: 4px; color: {TEXT_PRIMARY};">{safe_text}</div></div>'
-            )
+        header = QTextCharFormat()
+        header.setForeground(QColor(ACCENT_LIGHT if is_user else TEXT_SECONDARY))
+        header.setFontPointSize(9)
+        header.setFontWeight(QFont.Weight.DemiBold)
+        cursor.insertText('You' if is_user else 'Assistant', header)
+        header.setForeground(QColor(TEXT_MUTED))
+        header.setFontWeight(QFont.Weight.Normal)
+        cursor.insertText(f"   ·   {(timestamp or datetime.now()).strftime('%H:%M')}", header)
 
-        cursor.insertHtml(formatted_text)
-        self.chat_display.setTextCursor(cursor)
-        self.chat_display.ensureCursorVisible()
-    
+        body = QTextBlockFormat()
+        body.setTopMargin(10)
+        body.setLineHeight(145, QTextBlockFormat.LineHeightTypes.ProportionalHeight.value)
+        text_format = QTextCharFormat()
+        text_format.setForeground(QColor(TEXT_PRIMARY))
+        text_format.setFontPointSize(11)
+        cursor.insertBlock(body, text_format)
+        return cursor
+
+    def display_message(self, text, is_user=True):
+        with self._chat_scroll_guard():
+            cursor = self._insert_message_card(is_user)
+            cursor.insertText(text)
+
+
     def clear_chat(self):
         """Clear chat history"""
+        if self._response_active:
+            return
         reply = QMessageBox.question(
             self,
             "Clear Chat",
@@ -2079,6 +2914,7 @@ class WebAgentGUI(QMainWindow):
         
         if reply == QMessageBox.StandardButton.Yes:
             self.chat_display.clear()
+            self._reset_reply_actions()
             webagent.new_conversation(save_current=False)
             self.current_conversation_file = None
             self.conversation_saved_length = len(webagent.context.assistant_convo)
@@ -2108,18 +2944,32 @@ class WebAgentGUI(QMainWindow):
                 self.conversation_list.setCurrentItem(item)
 
     def _repaint_chat_from_history(self):
+        self._source_inspections.clear()
         self.chat_display.clear()
-        for msg in webagent.context.assistant_convo:
+        self._reset_reply_actions()
+        history = webagent.context.assistant_convo
+        last_user = max((i for i, msg in enumerate(history) if msg.get("role") == "user"), default=-1)
+        for index, msg in enumerate(history):
             role = msg.get("role")
             if role not in ("user", "assistant"):
                 continue
+            if index == last_user:
+                self._last_turn_context = copy.deepcopy(history[:index])
+                self._last_turn_html = self.chat_display.toHtml()
+                self._last_prompt = msg.get("content", "")
+                self._last_retry_allowed = webagent.context.current_agent != "scheduler"
             self.display_message(msg.get("content", ""), is_user=(role == "user"))
-            if role == "assistant" and "sources" in msg:
-                self._render_sources(msg["sources"])
+            if role == "assistant":
+                self._last_reply = msg.get("content", "")
+                if "sources" in msg:
+                    self._render_sources(msg["sources"])
+        self._update_reply_actions()
 
     def new_conversation_action(self):
         """Start a fresh conversation, offering to save the current one first if it has
         unsaved content."""
+        if self._response_active:
+            return
         if self._has_unsaved_messages():
             reply = QMessageBox.question(
                 self,
@@ -2136,10 +2986,13 @@ class WebAgentGUI(QMainWindow):
         self.current_conversation_file = None
         self.conversation_saved_length = len(webagent.context.assistant_convo)
         self.chat_display.clear()
+        self._reset_reply_actions()
         self._refresh_conversation_list()
 
     def load_selected_conversation(self, item):
         fname = item.data(Qt.ItemDataRole.UserRole)
+        if self._response_active:
+            return
         if fname == self.current_conversation_file:
             return
 
@@ -2168,16 +3021,186 @@ class WebAgentGUI(QMainWindow):
         self._refresh_conversation_list()
 
     def toggle_voice_mode(self, checked):
-        """Toggle voice input mode"""
+        """Voice mode owns microphone capture and streamed speech playback."""
         webagent.context.voice_mode = checked
-        if checked and self.tts_check.isChecked():
-            self.tts_check.setChecked(False)
+        if checked:
+            webagent.stop_tts()
+            self.voice_panel.reset()
+            self.voice_panel.show()
+            if self._response_active:
+                self._voice_turn = True
+                self.voice_session.reply_pending = True
+                self.voice_session.buffer.text = ""
+            self.voice_session.start()
+        else:
+            self.voice_session.stop()
+            if self._voice_turn and self._response_active:
+                self._interrupt_voice_reply()
+
+    def _on_voice_enabled(self, enabled):
+        from core.background import foreground_activity
+        if enabled and self._voice_priority is None:
+            self._voice_priority = foreground_activity()
+            self._voice_priority.__enter__()
+        elif not enabled and self._voice_priority is not None:
+            self._voice_priority.__exit__(None, None, None)
+            self._voice_priority = None
+        webagent.context.voice_mode = enabled
+        self.voice_check.blockSignals(True)
+        self.voice_check.setChecked(enabled)
+        self.voice_check.blockSignals(False)
+        self.voice_panel.setVisible(enabled)
+        if not enabled and self._voice_turn and self._response_active:
+            self._interrupt_voice_reply()
+
+    def _on_voice_phase(self, phase):
+        self.voice_panel.set_phase(phase)
+
+    def _on_voice_level(self, level):
+        self.voice_panel.set_level(level)
+
+    def _on_voice_input(self, text):
+        if self.voice_session.enabled and not self._response_active:
+            self.send_message(user_input=text)
+
+    def _on_voice_error(self, message):
+        if self._voice_priority is not None:
+            self._voice_priority.__exit__(None, None, None)
+            self._voice_priority = None
+        webagent.context.voice_mode = False
+        self.voice_check.blockSignals(True)
+        self.voice_check.setChecked(False)
+        self.voice_check.blockSignals(False)
+        self.voice_panel.show()
+        self.voice_panel.set_phase(message)
+        self.voice_panel.mute_button.setEnabled(False)
+        self.voice_panel.interrupt_button.setEnabled(False)
+        self.voice_panel.end_button.setEnabled(True)
+
+    def end_voice_chat(self):
+        self.voice_check.setChecked(False)
+        if not self.voice_session.enabled:
+            self.voice_panel.hide()
+
+    def interrupt_voice_chat(self):
+        self.voice_panel.mute_button.setChecked(False)
+        self.voice_session.interrupt()
+
+    def _interrupt_voice_reply(self):
+        if self._response_active and self._voice_turn and self.response_worker is not None:
+            self.response_worker.cancel()
+            self.send_button.setEnabled(False)
+            self._set_chat_activity("Stopping")
+
+    def _voice_idle(self):
+        if self._close_requested and not self._response_active:
+            QTimer.singleShot(0, self.close)
+
+    def open_voice_settings(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Voice settings")
+        dialog.setMinimumWidth(460)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Speech recognition runs locally. No microphone audio is uploaded."))
+        layout.addWidget(QLabel("Speech model folder"))
+        model_row = QHBoxLayout()
+        model = QLineEdit(self.voice_session.model_path)
+        model_row.addWidget(model, 1)
+        browse = QPushButton("Browse…")
+        def choose_model():
+            folder = QFileDialog.getExistingDirectory(dialog, "Choose a Vosk model folder", model.text())
+            if folder:
+                model.setText(folder)
+        browse.clicked.connect(choose_model)
+        model_row.addWidget(browse)
+        layout.addLayout(model_row)
+        layout.addWidget(QLabel("Reply voice"))
+        voice = QComboBox()
+        voice.addItem("System default (local)", "")
+        for label, name in [("Aria — US English", "en-US-AriaNeural"),
+                            ("Jenny — US English", "en-US-JennyNeural"),
+                            ("Guy — US English", "en-US-GuyNeural"),
+                            ("Sonia — UK English", "en-GB-SoniaNeural")]:
+            voice.addItem(f"{label} (online neural)", f"neural:{name}")
+        if webagent.platform.system() == "Darwin":
+            try:
+                voices = webagent.subprocess.check_output(["say", "-v", "?"], text=True, timeout=3)
+                for line in voices.splitlines():
+                    match = re.match(r"(.+?)\s+([a-z]{2}_[A-Z]{2})\s+", line)
+                    if match:
+                        name, language = match.groups()
+                        voice.addItem(f"{name} ({language})", name)
+            except (OSError, webagent.subprocess.SubprocessError):
+                pass
+        index = voice.findData(self.voice_session.output_voice)
+        voice.setCurrentIndex(max(0, index))
+        layout.addWidget(voice)
+        voice_note = QLabel("Neural voices send reply text to Microsoft for speech and need internet. Local voices stay on this computer.")
+        voice_note.setWordWrap(True)
+        layout.addWidget(voice_note)
+        layout.addWidget(QLabel("Speaking speed (words per minute)"))
+        rate = QSpinBox()
+        rate.setRange(80, 300)
+        rate.setValue(self.voice_session.rate)
+        layout.addWidget(rate)
+        status = QLabel("")
+        status.setWordWrap(True)
+        layout.addWidget(status)
+        preview = QPushButton("Preview voice")
+        layout.addWidget(preview)
+        def preview_clicked():
+            if self.voice_preview.worker is not None:
+                self.voice_preview.stop()
+                preview.setEnabled(False)
+                preview.setText("Stopping…")
+            else:
+                status.clear()
+                webagent.stop_tts()
+                self.voice_preview.start(voice.currentData(), rate.value())
+        def preview_active(active):
+            preview.setEnabled(True)
+            preview.setText("Stop preview" if active else "Preview voice")
+        preview.clicked.connect(preview_clicked)
+        self.voice_preview.active_changed.connect(preview_active)
+        self.voice_preview.error.connect(status.setText)
+        dialog.finished.connect(lambda _: self.voice_preview.stop())
+        buttons = QHBoxLayout()
+        save, cancel = QPushButton("Save"), QPushButton("Cancel")
+        buttons.addWidget(save)
+        buttons.addWidget(cancel)
+        layout.addLayout(buttons)
+        def apply():
+            try:
+                self.voice_session.save_settings(model.text().strip(), voice.currentData(), rate.value())
+            except (ValueError, OSError) as exc:
+                status.setText(str(exc))
+                return
+            if self.voice_session.enabled:
+                self.voice_session.energy = None
+            dialog.accept()
+        save.clicked.connect(apply)
+        cancel.clicked.connect(dialog.reject)
+        was_muted = self.voice_session.muted
+        if self.voice_session.enabled:
+            self.voice_session.mute(True)
+        dialog.exec()
+        self.voice_preview.active_changed.disconnect(preview_active)
+        self.voice_preview.error.disconnect(status.setText)
+        if self.voice_session.enabled:
+            # Keep recognition muted until the sample has actually stopped.
+            if self.voice_preview.worker is not None:
+                def restore_mic(active):
+                    if not active:
+                        self.voice_preview.active_changed.disconnect(restore_mic)
+                        if self.voice_session.enabled:
+                            self.voice_session.mute(was_muted)
+                self.voice_preview.active_changed.connect(restore_mic)
+            else:
+                self.voice_session.mute(was_muted)
 
     def toggle_tts_mode(self, checked):
-        """Toggle text-to-speech mode"""
+        """Text-mode read-aloud is separate from the hands-free voice session."""
         webagent.context.tts_mode = checked
-        if checked and self.voice_check.isChecked():
-            self.voice_check.setChecked(False)
 
     def toggle_web_search(self, checked):
         """Toggle web search mode"""
@@ -2212,7 +3235,54 @@ class WebAgentGUI(QMainWindow):
             QFrame#toolbar {{
                 background-color: {BG_PANEL};
                 border: 1px solid {BORDER};
-                border-radius: 10px;
+                border-radius: 16px;
+            }}
+            QFrame#convoPanel {{
+                background-color: {BG_PANEL};
+                border: 1px solid {BORDER};
+                border-radius: 16px;
+            }}
+            QFrame#composer {{
+                background-color: {BG_INPUT};
+                border: 1px solid {BORDER_LIGHT};
+                border-radius: 16px;
+            }}
+            QScrollArea#interestDashboard {{
+                background-color: {BG_PANEL};
+                border: 1px solid {BORDER};
+                border-radius: 16px;
+            }}
+            QWidget#dashboardContent {{
+                background-color: {BG_PANEL};
+            }}
+            QLabel#dashboardTitle {{
+                color: {TEXT_PRIMARY};
+                font-size: 23px;
+                font-weight: 600;
+            }}
+            QLabel#dashboardEmpty {{
+                color: {TEXT_SECONDARY};
+                font-size: 14px;
+                padding: 24px 0;
+            }}
+            QFrame#interestCard {{
+                background-color: {BG_INPUT};
+                border: 1px solid {BORDER};
+                border-radius: 12px;
+            }}
+            QLabel#interestTag {{
+                color: {ACCENT_LIGHT};
+                font-size: 10px;
+                font-weight: 600;
+            }}
+            QLabel#interestName {{
+                color: {TEXT_PRIMARY};
+                font-size: 16px;
+                font-weight: 600;
+            }}
+            QLabel#interestUpdate {{
+                color: {TEXT_SECONDARY};
+                font-size: 13px;
             }}
             QFrame#toggleSeparator {{
                 background-color: {BORDER};
@@ -2221,25 +3291,25 @@ class WebAgentGUI(QMainWindow):
             }}
             QTextEdit {{
                 font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif;
-                font-size: 13px;
-                border-radius: 8px;
+                font-size: 14px;
+                border-radius: 12px;
             }}
             QTextEdit#chatDisplay {{
                 background-color: {BG_PANEL};
                 border: 1px solid {BORDER};
-                padding: 15px;
+                padding: 8px;
                 color: {TEXT_PRIMARY};
-                line-height: 1.5;
+                border-radius: 16px;
             }}
             QTextEdit#inputText {{
-                background-color: {BG_INPUT};
-                border: 1px solid {BORDER};
-                padding: 10px;
+                background-color: transparent;
+                border: none;
+                padding: 4px;
                 color: {TEXT_PRIMARY};
             }}
             QTextEdit#inputText:focus {{
-                border: 1px solid {ACCENT};
-                background-color: {BG_ELEVATED};
+                border: none;
+                background-color: transparent;
             }}
             QComboBox {{
                 border: 1px solid {BORDER};
@@ -2265,8 +3335,8 @@ class WebAgentGUI(QMainWindow):
                 background-color: {BG_ELEVATED};
                 color: {TEXT_PRIMARY};
                 border: 1px solid {BORDER_LIGHT};
-                border-radius: 8px;
-                padding: 6px 10px;
+                border-radius: 10px;
+                padding: 7px 12px;
                 font-size: 13px;
             }}
             QPushButton:hover {{
@@ -2393,6 +3463,19 @@ class WebAgentGUI(QMainWindow):
             QListWidget::item:selected {{
                 background-color: {ACCENT};
                 color: white;
+            }}
+            QListWidget#conversationList {{
+                background-color: transparent;
+                border: none;
+            }}
+            QListWidget#conversationList::item {{
+                padding: 12px 10px;
+                margin-bottom: 4px;
+            }}
+            QListWidget#conversationList::item:selected {{
+                background-color: {BG_ELEVATED};
+                color: {ACCENT_LIGHT};
+                border: 1px solid {BORDER_LIGHT};
             }}
             QListWidget#navList {{
                 background-color: {BG_APP};

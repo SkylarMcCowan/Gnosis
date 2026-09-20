@@ -50,3 +50,26 @@ def test_knowledge_base_search_is_case_insensitive_and_scoped(isolated_data_dir)
 
     results = webagent.search_knowledge_base("overview effect")
     assert [name for name, _ in results] == ["a.md"]
+
+
+def test_user_can_edit_pin_and_forget_memory(isolated_data_dir):
+    webagent.save_agent_memory('default', 'I follow Manchester United.')
+    date = webagent.load_agent_memory('default')[0]['date']
+    webagent.update_agent_memory('default', date, summary='I follow Arsenal.', pinned=True)
+    for i in range(25):
+        webagent.save_agent_memory('default', f'New conversation number {i}')
+    entries = webagent.load_agent_memory('default')
+    assert len(entries) == 20
+    assert any(entry.get('pinned') and entry['summary'] == 'I follow Arsenal.' for entry in entries)
+    assert 'Arsenal' in webagent.get_relevant_agent_memory('default', 'greeting')
+    webagent.update_agent_memory('default', date, forget=True)
+    assert all(entry['date'] != date for entry in webagent.load_agent_memory('default'))
+
+
+def test_saved_notes_cannot_independently_corroborate_web_results():
+    notes = {'url': 'knowledge_base://notes.txt', 'search_provider': 'knowledge-base',
+             'content': 'Census population 331 million', 'truthfulness_confidence': 40}
+    live = {'url': 'https://example.org/census', 'content': notes['content']}
+    webagent.apply_corroboration([notes, live])
+    assert live['corroborating_domains'] == []
+    assert notes['truthfulness_confidence'] == 40

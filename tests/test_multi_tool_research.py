@@ -55,6 +55,12 @@ def test_select_tool_actions_selects_multiple_tools_at_once(fake_ollama_chat):
     ]
 
 
+def test_select_tool_actions_rejects_off_topic_web_query(fake_ollama_chat):
+    fake_ollama_chat.reply = '{"tools": [{"tool": "web.search", "arguments": {"query": "Biosphere 3"}}]}'
+
+    assert webagent._select_tool_actions("give me a list of 100 books to read before i die") == []
+
+
 def test_select_tool_actions_rejects_a_tool_outside_the_catalog(fake_ollama_chat):
     fake_ollama_chat.reply = '{"tools": [{"tool": "cron.remove", "arguments": {"index": 1}}]}'
     assert webagent._select_tool_actions("delete my alarm") == []

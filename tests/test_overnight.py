@@ -30,11 +30,16 @@ def _run_git(repo_dir, *args):
     return result
 
 
+@pytest.fixture(autouse=True)
+def no_live_study(monkeypatch):
+    monkeypatch.setattr("core.knowledge_maintenance.learn_from_sources", lambda root: {"created": 0})
+
+
 @pytest.fixture
 def overnight_repo(tmp_path, monkeypatch):
     (tmp_path / "target.py").write_text("def add(a, b):\n    return a - b\n")
     (tmp_path / ".gitignore").write_text(
-        "experience/\ngnosis_workspace/\nknowledge_base/\nactivity/\n"
+        "experience/\ngnosis_workspace/\nknowledge_base/\nknowledge_state/\nactivity/\n"
     )
     _run_git(tmp_path, "init", "-q")
     _run_git(tmp_path, "add", "-A")

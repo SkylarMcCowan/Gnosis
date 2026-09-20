@@ -107,3 +107,17 @@ def test_webagent_reexports_the_same_models_registry():
     assert webagent.MODELS is core_models.MODELS
     assert webagent.ollama is core_models.ollama
     assert webagent.model_chat is core_models.chat
+
+
+def test_transport_timeout_propagates_without_retrying(monkeypatch):
+    import httpx
+    import ollama
+    calls = []
+    def stalled(request):
+        calls.append(request)
+        raise httpx.ReadTimeout('Model stalled', request=request)
+    client = ollama.Client(host='http://127.0.0.1:11434', transport=httpx.MockTransport(stalled), timeout=0.1)
+    monkeypatch.setattr(core_models, 'ollama', client)
+    with pytest.raises(httpx.ReadTimeout):
+        core_models.chat('local-model', [{'role': 'user', 'content': 'hello'}])
+    assert len(calls) == 1

@@ -43,6 +43,8 @@ from datetime import datetime
 
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QFont
+from network_map import NetworkMapPanel
+from device_watch.widget import DeviceWatchWidget
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QHBoxLayout, QHeaderView,
     QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QProgressBar, QPushButton,
@@ -473,6 +475,13 @@ def scan_lan(cidr, timeout=2, resolve_hostnames=True):
     except Exception as e:
         raise RuntimeError(describe_capture_error(e))
 
+    gateways = set()
+    try:
+        scapy_conf.route.resync()
+        gateways = {str(route[2]) for route in scapy_conf.route.routes
+                    if route[0] == 0 and route[1] == 0 and str(route[2]) != '0.0.0.0'}
+    except Exception:
+        pass  # Discovery still works when routing information is unavailable.
     devices = []
     for sent, received in answered:
         ip = received[ARP].psrc
@@ -485,6 +494,7 @@ def scan_lan(cidr, timeout=2, resolve_hostnames=True):
             "vendor": resolve_vendor(mac),
             "hostname": resolve_hostname(ip) if resolve_hostnames else None,
             "rtt_ms": rtt_ms,
+            "is_gateway": ip in gateways,
         })
     devices.sort(key=lambda d: tuple(int(part) for part in d["ip"].split(".")))
     return devices
@@ -509,6 +519,7 @@ class LanScanWorker(QThread):
 
 
 class NetworkDevicesWidget(QWidget):
+    devices_discovered = pyqtSignal(list)
     def __init__(self):
         super().__init__()
         self.worker = None
@@ -573,6 +584,7 @@ class NetworkDevicesWidget(QWidget):
             values = [device["ip"], device["mac"], device["vendor"], device["hostname"] or "-", rtt]
             for col, value in enumerate(values):
                 self.table.setItem(row, col, QTableWidgetItem(str(value)))
+        self.devices_discovered.emit(devices)
 
     def _on_scan_error(self, message):
         self.scan_button.setEnabled(True)
@@ -1836,7 +1848,10 @@ class HackerWidget(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         tabs = QTabWidget()
         self.network_devices = NetworkDevicesWidget()
-        tabs.addTab(self.network_devices, "Network Devices")
+        self.network_map = NetworkMapPanel(self.network_devices)
+        tabs.addTab(self.network_map, "Network Map")
+        self.device_watch = DeviceWatchWidget()
+        tabs.addTab(self.device_watch, "Device Watch")
         self.network_inspector = NetworkInspectorWidget()
         tabs.addTab(self.network_inspector, "Network Inspector")
         self.encoder_decoder = EncoderDecoderWidget()
@@ -1847,12 +1862,27 @@ class HackerWidget(QWidget):
         tabs.addTab(self.password_strength, "Password Strength")
         self.port_scanner = PortScannerWidget()
         tabs.addTab(self.port_scanner, "Port Scanner")
+        def open_ports(ip):
+            if self.port_scanner.worker is not None:
+                tabs.setCurrentWidget(self.port_scanner)
+                return
+            self.port_scanner.target_edit.setText(ip)
+            tabs.setCurrentWidget(self.port_scanner)
+
+        def inspect_device(ip):
+            self.network_inspector.filter_edit.setText(f"ip.addr == {ip}")
+            self.network_inspector.apply_filter()
+            tabs.setCurrentWidget(self.network_inspector)
+
+        self.network_map.scan_requested.connect(open_ports)
+        self.network_map.inspect_requested.connect(inspect_device)
         self.loic_tab = LoicTab()
         tabs.addTab(self.loic_tab, "LOIC Benchmark")
         layout.addWidget(tabs)
 
     def stop_and_cleanup(self):
         self.network_inspector.stop_and_cleanup()
+        self.device_watch.stop_and_cleanup()
         if self.network_devices.worker is not None and self.network_devices.worker.isRunning():
             self.network_devices.worker.wait(2000)
         self.hash_cracker.stop_and_cleanup()

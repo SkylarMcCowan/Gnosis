@@ -26,7 +26,7 @@ from core.events import (
 from core.activity_log import record_activity
 from core.command_router import CommandRouter
 from core.context import context
-from core.exceptions import ModelUnavailableError
+from core.exceptions import ModelUnavailableError, ChatCancelled
 from core.orchestrator import Orchestrator
 from core import subscriptions
 from tools.base import Permission
@@ -65,9 +65,20 @@ from tools.design.create_file import DesignCreateFileTool
 from tools.design.get_file import DesignGetFileTool
 from tools.design.add_board import DesignAddBoardTool
 from tools.design.add_shape import DesignAddShapeTool
+from tools.conversation.inspect import ConversationInspectTool
+from tools.evidence.verify import EvidenceVerifyTool
+from tools.knowledge.related import KnowledgeRelatedTool
+from tools.knowledge.forget import KnowledgeForgetTool
+from tools.repository.inspect import RepoInspectTool
+from tools.models.status import ModelStatusTool
+from tools.planning.task_plan import TaskPlanTool
 import penpot
 from skills.registry import registry as skill_registry
 from skills.research.topic import ResearchTopicSkill
+from skills.conversation.recover import ConversationRecoverSkill
+from skills.research.verify import ResearchVerifySkill
+from skills.knowledge.maintain import KnowledgeMaintainSkill
+from skills.repository.change_review import RepositoryChangeReviewSkill
 from memory.experience import build_experience, record_experience
 from learning.evaluator import evaluate_recent_performance
 from learning.critic import critique_recent_failures
@@ -83,8 +94,13 @@ from core.models import (
     ollama,
     MODELS,
     chat as model_chat,
+    cloud_models,
+    MODEL_CONTEXT, DEFAULT_CONTEXT, thinking_options,
     pull_all as pull_all_models,
 )
+
+from core.chat_optimization import is_direct_chat, budget_messages
+from core.topic_guard import candidate_matches_request, relevance_signals
 
 import sys_msgs
 import agent_dialogue
@@ -326,27 +342,21 @@ def get_fun_prompt():
 # Conversation management
 # -----------------------------
 def trim_conversation(max_messages=80, max_chars=20000):
-    """Trim `context.assistant_convo` to keep it within a reasonable context window.
-    Keeps the last `max_messages` messages and ensures total characters stay below `max_chars`.
+    """Budget instructions and complete recent turns for the selected model.
+
+    Token counts are approximate; reserve reply space and retain bounded older
+    excerpts when possible. Never silently discard an oversized current request.
     """
     if not isinstance(context.assistant_convo, list) or not context.assistant_convo:
         return
-    # Keep the system seed message if present at index 0
-    seed = context.assistant_convo[0] if context.assistant_convo and context.assistant_convo[0].get('role') == 'system' else None
-    tail = context.assistant_convo[1:] if seed else context.assistant_convo[:]
-
-    # Trim by message count first
-    if len(tail) > max_messages:
-        tail = tail[-max_messages:]
-
-    # Trim by approximate char count
-    total = sum(len(m.get('content','')) for m in tail)
-    while total > max_chars and tail:
-        # drop the oldest message
-        dropped = tail.pop(0)
-        total -= len(dropped.get('content',''))
-
-    context.assistant_convo = ([seed] if seed else []) + tail
+    chosen = _selected_model()
+    size = MODEL_CONTEXT.get(chosen, DEFAULT_CONTEXT)
+    if cloud_models.is_cloud(chosen):
+        size = 8192
+    try:
+        context.assistant_convo = budget_messages(context.assistant_convo, size, max_messages, max_chars)
+    except ValueError as exc:
+        raise ModelUnavailableError(str(exc)) from exc
 
 
 def _conversations_dir():
@@ -622,7 +632,24 @@ def stop_voice(disable_voice=True):
             time.sleep(0.5)
             os.system("pkill mpg123")
 
+def _is_tts_source_heading(text):
+    return bool(re.fullmatch(
+        r"\s*(?:#{1,6}\s*)?(?:\*\*)?(?:sources?|references?|citations?|bibliography)"
+        r"(?:\*\*)?\s*:?(?:\*\*)?\s*", text, re.IGNORECASE,
+    ))
+
+
 def _clean_tts_text(text):
+    # Keep evidence in the transcript, but speak only the answer.
+    lines = []
+    for line in text.splitlines():
+        if _is_tts_source_heading(line):
+            break
+        lines.append(line)
+    text = '\n'.join(lines)
+    text = re.sub(r'```.*?(?:```|$)', '', text, flags=re.DOTALL)
+    text = re.sub(r'\[([^\]]+)\]\(https?://[^)]+\)', r'\1', text)
+    text = re.sub(r'\[(?:\d+(?:\s*[,;–-]\s*\d+)*|source\s+\d+|citation[^\]]*)\]', '', text, flags=re.IGNORECASE)
     text = re.sub(r'https?://\S+', '', text)
     text = re.sub(r'[*_`~#>\[\]\(\)\|]', '', text)
     text = re.sub(r'[\r\n]+', ' ', text)
@@ -766,18 +793,16 @@ async def speak_text(text):
 # Streaming Response Function
 # -------------------------------------
 def stream_response():
-    if ollama is None:
+    if ollama is None and not cloud_models.is_cloud(_selected_model()):
         print(f"{Fore.RED}Ollama client is unavailable. Cannot generate response.{Style.RESET_ALL}")
         return ""
     # Ensure conversation is within allowed context window
-    try:
-        trim_conversation()
-    except Exception:
-        pass
+    trim_conversation()
     print(f"{Fore.CYAN}Generating response...\n{Style.RESET_ALL}")
     complete_response = ""
     chosen_model = _selected_model()
-    response_stream = model_chat(model=chosen_model, messages=context.assistant_convo, stream=True)
+    response_stream = model_chat(model=chosen_model, messages=context.assistant_convo, stream=True,
+                                 **thinking_options(chosen_model, context.reasoning_mode or context.deep_think_mode))
     with _TypeaheadCapture() as capture:
         for chunk in response_stream:
             text_chunk = chunk["message"]["content"]
@@ -826,7 +851,7 @@ def chat_response(prompt, on_chunk=None, on_status=None, on_sources=None):
     caller should show distinctly from "no research happened this turn"
     (this function never calls it at all in that case).
     """
-    if ollama is None:
+    if ollama is None and not cloud_models.is_cloud(_selected_model()):
         raise ModelUnavailableError("Ollama client is unavailable. Please install and configure ollama.")
 
     prompt = (prompt or "").strip()
@@ -844,6 +869,7 @@ def chat_response(prompt, on_chunk=None, on_status=None, on_sources=None):
 def _chat_response_impl(prompt, on_chunk, on_sources=None):
     stop_tts()
     processed_prompt = process_search_tags(prompt)
+    research_prompt = _research_prompt_for_followup(processed_prompt)
 
     # A real cron mutation is reported verbatim, code-generated, with no LLM
     # call for this turn at all - see run_scheduler_agent_step's docstring
@@ -856,26 +882,41 @@ def _chat_response_impl(prompt, on_chunk, on_sources=None):
             on_chunk(scheduler_reply)
         return scheduler_reply
 
-    research_used = context.web_search_mode or context.deep_think_mode
+    # Remove only context explicitly tagged as belonging to an earlier turn.
+    context.assistant_convo = [m for m in context.assistant_convo if not m.get('_turn_context')]
+    direct = is_direct_chat(processed_prompt) and not context.deep_think_mode
+    research_used = context.deep_think_mode or (context.web_search_mode and not direct)
     search_results = []
     if research_used:
-        update_user_notes_softly(processed_prompt, [])
-        search_results = model_directed_web_research(processed_prompt)
+        update_user_notes_softly(research_prompt, [])
+        search_results = model_directed_web_research(research_prompt)
         if on_sources:
             on_sources(search_results)
         context.assistant_convo.append({
             "role": "system",
-            "content": enhance_conversation_with_search(processed_prompt, search_results, deep=context.deep_think_mode),
+            "content": enhance_conversation_with_search(research_prompt, search_results, deep=context.deep_think_mode),
+            "_turn_context": True,
         })
     else:
         context_info = [get_datetime_context()]
-        user_context = get_relevant_user_context(processed_prompt)
+        user_context = get_relevant_user_context(research_prompt)
         if user_context != "No user profile information available":
             context_info.append(f"User context: {user_context}")
-        context.assistant_convo.append({"role": "system", "content": f"[Context: {' | '.join(context_info)}]"})
+        context.assistant_convo.append({"role": "system", "_turn_context": True, "content": f"[Context: {' | '.join(context_info)}]"})
+        if not direct and not requires_current_web_verification(research_prompt):
+            _emit_status("Searching saved knowledge...")
+            search_results = _knowledge_search_evidence(research_prompt, search_knowledge_base(research_prompt))
+            if search_results:
+                context.assistant_convo.append({
+                    "role": "system", "_turn_context": True,
+                    "content": "Saved knowledge is unverified background, not live evidence. Use only passages that answer this request.\n" + enhance_conversation_with_search(research_prompt, search_results),
+                })
+                if on_sources:
+                    on_sources(search_results)
 
-    _emit_status("Checking whether a local capability would help...")
-    tool_action = _select_tool_action(processed_prompt)
+    if not direct:
+        _emit_status("Checking whether a local capability would help...")
+    tool_action = {"tool": None} if direct else _select_tool_action(research_prompt)
     if tool_action.get("tool"):
         _emit_status(f"Using {tool_action['tool']}...")
         tool_summary = _execute_tool_action(tool_action)
@@ -884,38 +925,73 @@ def _chat_response_impl(prompt, on_chunk, on_sources=None):
             context.assistant_convo.append({
                 "role": "system",
                 "content": f"Additional context from a Gnosis capability you chose to use:\n{tool_summary}",
+                "_turn_context": True,
             })
 
     persona_prompt = get_persona_system_prompt()
     if persona_prompt:
-        context.assistant_convo.append({"role": "system", "content": persona_prompt})
+        context.assistant_convo.append({"role": "system", "_turn_context": True, "content": persona_prompt})
 
+    if context.voice_mode:
+        context.assistant_convo.append({
+            "role": "system", "_turn_context": True,
+            "content": "This is a live voice conversation. Respond naturally, with concise spoken sentences. Avoid tables, code, and long lists unless the user asks for them. Preserve your active persona and answer the user's actual question.",
+        })
     memory_key = context.current_agent or "default"
     memory_context = get_relevant_agent_memory(memory_key, processed_prompt)
     if memory_context:
-        context.assistant_convo.append({"role": "system", "content": memory_context})
+        context.assistant_convo.append({"role": "system", "_turn_context": True, "content": memory_context})
 
+    turn_focus = (
+        "Answer the latest user message below and stay on its immediate topic. "
+        "Use earlier turns only to resolve references such as 'that' or 'again'. "
+        "Ignore unrelated topics, stale memory, and evidence that does not directly answer it. "
+        f"The current topic is: {research_prompt}"
+    )
+    for message in reversed(context.assistant_convo):
+        if message.get("role") == "system" and message.get("_turn_context"):
+            message["content"] += f"\n{turn_focus}"
+            break
     context.assistant_convo.append({"role": "user", "content": processed_prompt})
 
-    try:
-        trim_conversation()
-    except Exception:
-        pass
+    trim_conversation()
 
     _emit_status("Writing a response...")
     complete_response = ""
-    for chunk in model_chat(model=_selected_model(), messages=context.assistant_convo, stream=True):
-        text_chunk = chunk.get("message", {}).get("content", "")
-        if not text_chunk:
-            continue
-        complete_response += text_chunk
+    chosen_model = _selected_model()
+    thinking_reported = False
+    response_stream = model_chat(model=chosen_model, messages=context.assistant_convo, stream=True,
+                                 **thinking_options(chosen_model, context.reasoning_mode or context.deep_think_mode))
+    try:
+        for chunk in response_stream:
+            message = chunk.get("message", {})
+            if message.get("thinking") and not thinking_reported:
+                _emit_status("Thinking...")
+                thinking_reported = True
+            text_chunk = message.get("content", "")
+            if not text_chunk:
+                continue
+            if on_chunk and not research_used:
+                on_chunk(text_chunk)
+            complete_response += text_chunk
+    except ChatCancelled:
+        if complete_response:
+            context.assistant_convo.append({"role": "assistant", "content": complete_response, "interrupted": True})
+        raise
+    finally:
+        close = getattr(response_stream, "close", None)
+        if close:
+            close()
+
+    if research_used and complete_response.strip():
+        complete_response = review_draft_topic(processed_prompt, complete_response, search_results)
         if on_chunk:
-            on_chunk(text_chunk)
+            on_chunk(complete_response)
 
     # Stored as the model's own drafted answer, with nothing appended after
     # it - see fact_check_answer's call site below for why.
     context.assistant_convo.append({"role": "assistant", "content": complete_response})
-    if research_used:
+    if search_results:
         # Rides along as an extra dict key - confirmed harmless to pass back
         # into ollama.chat later (it's simply ignored), and it means sources
         # persist through save_conversation/load_conversation for free, with
@@ -938,13 +1014,21 @@ def _chat_response_impl(prompt, on_chunk, on_sources=None):
         if fact_check:
             save_fact_check_record(processed_prompt, complete_response, fact_check, search_results)
 
+    try:
+        from core.autonomous_research import observe_turn
+        observe_turn(core_config.project_root(), processed_prompt, complete_response,
+                     evidence=search_results, checked=not direct)
+    except (OSError, ValueError):
+        pass  # Queue persistence must not interrupt a completed chat response.
     analyze_conversation_patterns(processed_prompt, complete_response)
     if complete_response:
         events.publish(
             TASK_COMPLETED, agent_name=context.current_agent or "default",
             user_input=processed_prompt, response=complete_response,
         )
-    if context.tts_mode and not context.voice_mode:
+    if context.voice_mode and on_chunk is None:
+        asyncio.run(speak_text(complete_response))
+    elif context.tts_mode and not context.voice_mode:
         start_tts_in_background(complete_response)
     return complete_response
 
@@ -1033,12 +1117,14 @@ def search_web(query):
     print(f"{Fore.CYAN}🧠 Performing web search for: {query}{Style.RESET_ALL}")
     _emit_status(f"Searching the web: {query}")
     results = search_searx(query)
+    live_result_count = len(results or [])
     if results:
         results = [dict(result, search_provider="searxng") for result in results]
     else:
         print(f"{Fore.YELLOW}ℹ️ Web search sources unavailable or returned no results. Using offline fallback.{Style.RESET_ALL}")
         results = search_fallback(query)
-    events.publish(SEARCH_COMPLETED, query=query, result_count=len(results))
+    events.publish(SEARCH_COMPLETED, query=query, result_count=len(results),
+                   live_result_count=live_result_count)
     return results
 
 
@@ -1120,7 +1206,11 @@ def requires_current_web_verification(prompt):
         "double check", "verify", "fact check", "are you sure", "that's wrong",
         "that is wrong", "no ", "isn't", "is not", "incorrect", "wrong",
     )
-    return any(marker in text for marker in current_markers + correction_markers)
+    population_count = bool(
+        re.search(r"\bpopulation\b", text)
+        and re.search(r"\b(what|how|estimate|size|number|count|current|latest)\b", text)
+    ) or bool(re.search(r"\bhow many (?:people|residents) (?:live|are|does|do)\b", text))
+    return population_count or any(marker in text for marker in current_markers + correction_markers)
 
 
 def _planner_history():
@@ -1130,6 +1220,142 @@ def _planner_history():
         if message.get("role") in {"user", "assistant"}:
             recent.append(f"{message['role']}: {message.get('content', '')[:350]}")
     return "\n".join(recent) or "(No prior conversation.)"
+
+
+def _inspect_conversation():
+    """Return bounded, derived conversation state without exposing prompts or memory."""
+    turns = [
+        message for message in context.assistant_convo
+        if message.get("role") in {"user", "assistant"}
+    ]
+    user_turns = [message.get("content", "").strip() for message in turns if message.get("role") == "user"]
+    latest = user_turns[-1] if user_turns else ""
+    topic_prompt = latest
+    if latest and re.sub(r"[.!?]+$", "", latest.casefold()) in _FOLLOWUP_RETRY_PHRASES and len(user_turns) > 1:
+        topic_prompt = user_turns[-2]
+    constraint_prompt = topic_prompt or latest
+    requested_count = None
+    count_match = re.search(r"\b(?:top|list of|give me)\s+(\d+)\b", constraint_prompt.casefold())
+    if count_match:
+        requested_count = int(count_match.group(1))
+    formats = [
+        name for name, marker in (
+            ("list", "list"), ("table", "table"), ("code", "code"),
+            ("steps", "step"), ("summary", "summar"),
+        ) if marker in constraint_prompt.casefold()
+    ]
+    return {
+        "user_turn_count": len(user_turns),
+        "recent_user_turns": user_turns[-3:],
+        "active_topic": topic_prompt[:500],
+        "is_follow_up": bool(latest and topic_prompt.casefold() != latest.casefold()),
+        "requested_count": requested_count,
+        "requested_formats": formats,
+        "has_assistant_reply": bool(turns and turns[-1].get("role") == "assistant"),
+    }
+
+
+def _knowledge_related(topic, limit=5):
+    """Return bounded provenance-rich knowledge matches for a topic."""
+    try:
+        limit = max(1, min(int(limit), 20))
+    except (TypeError, ValueError):
+        limit = 5
+    matches = search_knowledge_base(topic)[:limit]
+    return [
+        {
+            "path": filename,
+            "excerpt": str(passage)[:1200],
+            "provenance": dict(getattr(passage, "metadata", {}) or {}),
+        }
+        for filename, passage in matches
+    ]
+
+
+def _knowledge_forget(path, confirm=False):
+    """Archive a knowledge source before removing it, only after confirmation."""
+    if not confirm:
+        return {"removed": False, "requires_confirmation": True, "path": path}
+    root = os.path.abspath(os.path.join(core_config.project_root(), "knowledge_base"))
+    target = os.path.abspath(os.path.join(root, path))
+    if not target.startswith(root + os.sep) or not os.path.isfile(target):
+        return {"removed": False, "requires_confirmation": False, "path": path, "error": "source not found"}
+    from core.knowledge_maintenance import preserve_source
+    archive_path = preserve_source(target, core_config.project_root())
+    os.unlink(target)
+    return {"removed": True, "path": path, "archive_path": os.path.relpath(archive_path, core_config.project_root())}
+
+
+def _inspect_repository():
+    return {
+        "basic_audit": audit_repository(),
+        "advanced_audit": audit_repository_advanced(),
+    }
+
+
+def _model_status():
+    from core import models
+    return {
+        "selected_model": _selected_model(),
+        "available": models.is_available(),
+        "context_window": MODEL_CONTEXT.get(_selected_model(), DEFAULT_CONTEXT),
+        "modes": {
+            "web_search": context.web_search_mode,
+            "deep_think": context.deep_think_mode,
+            "reasoning": context.reasoning_mode,
+            "coding": context.coding_mode,
+            "voice": context.voice_mode,
+        },
+        "recent_metrics": task_completion_stats(window=10),
+    }
+
+
+def _build_task_plan(goal, context=""):
+    goal = (goal or "").strip()
+    if not goal:
+        return {"goal": "", "steps": [], "error": "goal is required"}
+    planner = (
+        "Create a bounded execution-neutral plan for the user's goal. Return ONLY valid JSON in this shape: "
+        '{"goal": "...", "steps": [{"title": "...", "depends_on": [], "done": false}], "next_action": "..."}. '
+        "Return at most 8 concrete steps. Do not claim anything was executed, do not persist tasks, and do not "
+        "invent missing project facts. Keep the plan specific and concise.\n\n"
+        f"Goal: {goal[:1200]}\nContext: {context[:1200]}"
+    )
+    if ollama is None:
+        return {"goal": goal, "steps": [], "next_action": "Clarify the first concrete step.", "error": "model unavailable"}
+    try:
+        response = model_chat(model=MODELS['fast'], messages=[{"role": "system", "content": planner}])
+        parsed = json.loads(response.get("message", {}).get("content", ""))
+        if not isinstance(parsed, dict) or not isinstance(parsed.get("steps"), list):
+            raise ValueError("planner returned an invalid plan")
+        steps = [step for step in parsed["steps"][:8] if isinstance(step, dict) and isinstance(step.get("title"), str)]
+        return {
+            "goal": goal,
+            "steps": [{"title": step["title"][:240], "depends_on": step.get("depends_on", []), "done": bool(step.get("done", False))} for step in steps],
+            "next_action": str(parsed.get("next_action") or (steps[0]["title"] if steps else "Clarify the first concrete step."))[:240],
+        }
+    except (ValueError, TypeError, json.JSONDecodeError, AttributeError):
+        return {"goal": goal, "steps": [], "next_action": "Clarify the first concrete step.", "error": "planner returned invalid JSON"}
+
+
+_FOLLOWUP_RETRY_PHRASES = (
+    "try again", "do it again", "answer again", "repeat that", "same question",
+    "the same question", "retry", "redo that",
+)
+
+
+def _research_prompt_for_followup(prompt):
+    """Anchor a vague retry to the preceding user request for research only."""
+    normalized = re.sub(r"[.!?]+$", "", prompt.strip().casefold())
+    if normalized not in _FOLLOWUP_RETRY_PHRASES:
+        return prompt
+    for message in reversed(context.assistant_convo):
+        if message.get("role") != "user":
+            continue
+        previous = (message.get("content") or "").strip()
+        if previous:
+            return previous
+    return prompt
 
 
 _CORRECTION_MARKERS = ("double check", "verify", "wrong", "no ", "isn't", "is not")
@@ -1348,7 +1574,12 @@ def apply_corroboration(evidence):
         _extract_fact_tokens(item.get("content", "")) - _extract_fact_tokens(item.get("query", ""))
         for item in evidence
     ]
-    hostnames = [(urlparse(item.get("url", "")).hostname or "").lower() for item in evidence]
+    hostnames = [
+        "" if item.get("search_provider") == "knowledge-base" or
+        (item.get("provenance") or {}).get("origin") == "saved-conversation"
+        else (urlparse(item.get("url", "")).hostname or "").lower()
+        for item in evidence
+    ]
     for i, item in enumerate(evidence):
         corroborating = set()
         if fact_sets[i] and hostnames[i]:
@@ -1360,7 +1591,7 @@ def apply_corroboration(evidence):
         corroboration_confidence = min(100, 40 + 30 * len(corroborating))
         item["corroboration_confidence"] = corroboration_confidence
         item["corroborating_domains"] = sorted(corroborating)
-        if item.get("search_provider") in _AUTHORITATIVE_EVIDENCE_PROVIDERS:
+        if item.get("search_provider") == "knowledge-base" or item.get("search_provider") in _AUTHORITATIVE_EVIDENCE_PROVIDERS:
             # A live API reading's confidence is fixed by design (see
             # _weather_evidence_item/_stock_evidence_item/_soccer_evidence_item),
             # not corroboration-derived - a real, live-reported bug: recomputing
@@ -1508,6 +1739,8 @@ def _emit_status(message):
     if callback:
         try:
             callback(message)
+        except ChatCancelled:
+            raise
         except Exception:
             pass
 
@@ -1551,6 +1784,9 @@ def _research_action(prompt, evidence, searches_used):
     planner = (
         "You are a web-research planner. Decide the next single action needed to answer the user's request. "
         "Use web search only when it would materially improve factual accuracy, freshness, or specificity. "
+        "A saved knowledge-base note matching a broad topic is not necessarily evidence for the requested fact. "
+        "Search again if the collected evidence does not actually answer the latest request; do not treat "
+        "a prior conversation's subject as the subject of a new, explicitly named question. "
         "Return ONLY valid JSON: {\"action\": \"search\", \"query\": \"specific query\", \"reason\": \"...\"} "
         "or {\"action\": \"answer\", \"reason\": \"...\"}. Do not search merely because web mode is enabled. "
         "For current officeholders, election or sports results, prices, schedules, news, or a user correction, "
@@ -1888,6 +2124,11 @@ def _deep_think_research_plan(prompt):
 
 def _query_words(query):
     return {w for w in re.findall(r"[a-z0-9]+", query.lower()) if len(w) > 3}
+
+
+def _search_text_matches_prompt(prompt, search_text):
+    """Return whether a generated search stays connected to the user request."""
+    return candidate_matches_request(prompt, search_text)
 
 
 def _is_near_duplicate_query(query, previous_queries):
@@ -2954,6 +3195,9 @@ def _matching_subscription(prompt):
 
 def _subscribed_team_lookup(subscription, prompt):
     metadata = subscription.get("metadata", {})
+    if metadata.get('sport', 'soccer') != 'soccer' or re.search(r'\b(?:schedule|fixtures|next\s+(?:five|5))\b', prompt, re.IGNORECASE):
+        from core import sports
+        return sports.schedule_evidence(subscription, _format_match_datetime)
     team_id, league_slug = metadata.get("team_id"), metadata.get("league_slug")
     if not team_id or not league_slug:
         return []
@@ -3008,6 +3252,20 @@ _SUBSCRIPTION_HANDLERS = {
 }
 
 
+def get_subscription_dashboard_evidence(subscription):
+    """Fetch source data without changing chat history or its status callback."""
+    kind = subscription.get('type')
+    if kind == 'team':
+        from core import sports
+        return sports.schedule_evidence(subscription, _format_match_datetime)
+    if kind == 'topic':
+        # Use the search provider directly; chat's search wrapper emits status
+        # into the active turn and archives results, neither belongs here.
+        return search_searx(f"{subscription['name']} latest news")
+    handler = _SUBSCRIPTION_HANDLERS.get(kind)
+    return handler(subscription, '') if handler else []
+
+
 def _subscription_bypass(prompt):
     """Evidence for prompt from a user-declared subscription, or [] if none
     matches - see core/subscriptions.py's module docstring for why this
@@ -3019,7 +3277,14 @@ def _subscription_bypass(prompt):
     handler = _SUBSCRIPTION_HANDLERS.get(subscription["type"])
     if not handler:
         return []
-    evidence = handler(subscription, prompt)
+    from core.result_cache import subscription_cache
+    key = json.dumps([subscription, prompt.casefold().strip()], sort_keys=True)
+    force = bool(re.search(r"\b(refresh|verify|wrong|incorrect)\b|double check", prompt, re.I))
+    evidence = None if force else subscription_cache.get(key)
+    if evidence is None:
+        evidence = handler(subscription, prompt)
+        ttl = {"weather": 120, "team": 60, "topic": 300, "website": 300}.get(subscription["type"], 60)
+        subscription_cache.put(key, evidence, ttl)
     if evidence:
         print(f"{Fore.CYAN}🔔 Subscribed {subscription['type']} lookup: {subscription['name']}{Style.RESET_ALL}")
         _emit_status(f"Checking your {subscription['type']} subscription: {subscription['name']}...")
@@ -3042,20 +3307,41 @@ def add_team_subscription(name):
     )
 
 
-def add_topic_subscription(name, keywords=None):
+def add_sports_team_subscription(league_key, team_id):
+    """Save a team chosen from the specified league's verified directory."""
+    from core import sports
+    team = next((item for item in sports.list_teams(league_key) if item['id'] == str(team_id)), None)
+    if team is None:
+        raise ValueError('Choose a team from the loaded league list.')
+    return subscriptions.add_subscription('team', team['name'], sports.team_metadata(league_key, team))
+
+
+def add_topic_subscription(name, keywords=None, category=None):
     """GUI-facing: no live resolution needed - a topic is just a name (and
     optional alias keywords) matched against future prompts."""
-    return subscriptions.add_subscription("topic", name, metadata={"keywords": keywords or []})
+    metadata = {"keywords": keywords or []}
+    if category is not None:
+        from core.interest_catalog import CATEGORIES
+        if category not in CATEGORIES:
+            raise ValueError("Choose a valid interest category")
+        metadata["category"] = category
+    return subscriptions.add_subscription("topic", name, metadata=metadata)
 
 
-def add_website_subscription(name, url, keywords=None):
+def add_website_subscription(name, url, keywords=None, category=None):
     """GUI-facing: verify the URL is actually fetchable before saving it -
     the same "we know it works" bar add_team_subscription holds a team
     name to. Raises ValueError (with a message fit to show the user
     directly) if the URL can't be fetched."""
     if not fetch_page_content(url):
         raise ValueError(f"Could not fetch {url} - check the URL and try again.")
-    return subscriptions.add_subscription("website", name, metadata={"url": url, "keywords": keywords or []})
+    metadata = {"url": url, "keywords": keywords or []}
+    if category is not None:
+        from core.interest_catalog import CATEGORIES
+        if category not in CATEGORIES:
+            raise ValueError("Choose a valid interest category")
+        metadata["category"] = category
+    return subscriptions.add_subscription("website", name, metadata=metadata)
 
 
 def add_weather_subscription(location):
@@ -3070,6 +3356,24 @@ def add_weather_subscription(location):
     if not weather:
         raise ValueError(f"Could not find a location matching \"{location}\".")
     return subscriptions.add_subscription("weather", weather["place"], metadata={"location": weather["place"]})
+
+
+def add_interest_subscription(name, category, keywords=None, url=None):
+    """Follow any named subject, optionally resolving a website source."""
+    from core.interest_catalog import CATEGORIES
+    if category not in CATEGORIES or category == "weather":
+        raise ValueError("Choose an interest category; use the location picker for weather")
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("Enter an interest name")
+    keywords = [word.strip() for word in (keywords or []) if word.strip()]
+    if url:
+        url = url.strip()
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            raise ValueError("Enter a complete http:// or https:// website URL")
+        return add_website_subscription(name, url, keywords=keywords, category=category)
+    return add_topic_subscription(name, keywords=keywords, category=category)
 
 
 _RESEARCH_TOOL_NAMES = ("knowledge.search", "web.search", "live.weather", "live.stock_quote", "live.soccer_result")
@@ -3170,6 +3474,14 @@ def _select_tool_actions(prompt):
             print(f"{Fore.YELLOW}ℹ️ Model selected '{name}' but didn't supply required argument(s) "
                   f"{missing} - skipping it.{Style.RESET_ALL}")
             continue
+        if name == "web.search" and not _search_text_matches_prompt(prompt, arguments.get("query", "")):
+            signals = relevance_signals(prompt, arguments.get("query", ""))
+            reason = (
+                f"rejected off-topic web query; overlap={signals['overlap']}; "
+                f"introduced={signals['introduced']}"
+            )
+            print(f"{Fore.YELLOW}ℹ️ Ignoring an off-topic web search for '{arguments.get('query')}'.{Style.RESET_ALL}")
+            continue
         seen_names.add(name)
         selected.append({"tool": name, "arguments": arguments})
     events.publish(TOOL_SELECTION_MADE, prompt=prompt, selected=[a["tool"] for a in selected], reason=reason)
@@ -3177,24 +3489,34 @@ def _select_tool_actions(prompt):
 
 
 def _knowledge_search_evidence(query, results):
-    """Normalize knowledge.search's (filename, content) tuples into the
-    same evidence-dict shape web search results use, so corroboration
-    scoring and fact-checking apply uniformly regardless of which tool
-    produced the grounding. High truthfulness (this is Gnosis's own past
-    research, not an arbitrary web page) but a lower freshness ceiling
-    (it's whatever age that saved research actually is, not verified live)."""
+    """Normalize passages while retaining provenance. Saved research remains
+    unverified background; local ownership does not establish truth or freshness.
+    """
     evidence = []
     for filename, content in (results or [])[:5]:
+        provenance = getattr(content, "metadata", {})
+        if provenance:
+            from core.knowledge_retrieval import terms, supports_population_count
+            requested = set(terms(query))
+            overlap = requested & set(terms(content))
+            if requested and len(overlap) / len(requested) < 0.6 and not (provenance.get("semantic_similarity") or 0) >= 0.65:
+                continue
+            if "usa" in requested and "usa" not in terms(content):
+                continue
+            if "population" in requested and not supports_population_count(content, requested):
+                continue
         evidence.append({
-            "id": hashlib.sha256(f"knowledge-base|{filename}|{query}".encode("utf-8")).hexdigest()[:16],
+            "id": hashlib.sha256(f"knowledge-base|{filename}|{provenance.get('offset', 0)}|{query}".encode("utf-8")).hexdigest()[:16],
             "query": query,
-            "captured_at": datetime.now(timezone.utc).isoformat(),
+            "captured_at": getattr(content, "metadata", {}).get("captured_at"),
             "title": f"Knowledge base - {filename}",
             "url": f"knowledge_base://{filename}",
             "search_provider": "knowledge-base",
             "content": content[:2000],
-            "truthfulness_confidence": 85,
-            "recency_confidence": 60,
+            "truthfulness_confidence": 40,
+            "recency_confidence": 0,
+            "provenance": getattr(content, "metadata", {}),
+            "verification_status": "unverified",
             "corroborating_domains": [],
         })
     return evidence
@@ -3267,7 +3589,8 @@ def model_directed_web_research(prompt):
     and multiple free sources (knowledge base, web search, a live.* lookup)
     can combine into one answer instead of stopping at the first hit. See
     _select_tool_actions's docstring for why this replaced regex as the
-    primary mechanism here.
+    primary mechanism here. Local-only selections continue through the
+    refinement loop, and current facts require external evidence.
     """
     if not context.deep_think_mode:
         subscription_evidence = _subscription_bypass(prompt)
@@ -3301,20 +3624,15 @@ def model_directed_web_research(prompt):
         actions = _select_tool_actions(prompt)
         for action in actions:
             evidence.extend(_execute_research_tool_action(action, prompt))
-        if evidence:
-            # Return immediately instead of falling into the iterative loop
-            # below - a real, live-reported bug: letting the loop continue
-            # after this let _research_action's "you MUST search" instruction
-            # (written for the OLD flow, where evidence started empty) force
-            # 5 more generic web searches on top of an already-correct live
-            # soccer result, and apply_corroboration then diluted the live
-            # item's fixed, authoritative confidence using corroboration math
-            # meant for scraped web pages - the noisy searches ended up
-            # outranking the correct answer entirely, and the final reply
-            # confidently reported a fabricated 0-0 score. The model's
-            # multi-tool selection is a deliberate, considered choice of
-            # sources for this turn, not a tentative first guess to second-
-            # guess with more searching.
+        if requires_current_web_verification(prompt):
+            # Saved notes cannot satisfy live verification or become citations
+            # for a current answer when web search is unavailable.
+            evidence = [item for item in evidence if item.get('search_provider') != 'knowledge-base']
+        external_evidence = [item for item in evidence if item.get('search_provider') != 'knowledge-base']
+        if external_evidence:
+            # Preserve authoritative live lookups and selected web results.
+            # Local-only hits still need the refinement loop: finding a saved
+            # note about a country does not establish its population today.
             apply_corroboration(evidence)
             persist_evidence_updates(evidence)
             return sorted(evidence, key=lambda item: (item["truthfulness_confidence"], item["recency_confidence"]), reverse=True)
@@ -4153,7 +4471,9 @@ def enhance_conversation_with_search(query, search_results, deep=False):
                 f"corroborated by {len(result.get('corroborating_domains', []))} other domain(s); "
                 f"freshness {result.get('recency_confidence', 'n/a')}/100): "
                 f"{_evidence_display_text(result, summary_sentences)}\n"
-                f"Source: {result.get('url', 'unknown')}"
+                f"Source: {result.get('url', 'unknown')}; captured: {result.get('captured_at') or 'unknown'}; "
+                f"origin: {(result.get('provenance') or {}).get('origin') or result.get('search_provider', 'unknown')}; "
+                f"verification: {result.get('verification_status', 'not independently verified')}"
                 for i, result in enumerate(search_results[:evidence_limit])
                 if result and 'content' in result
             ])
@@ -4193,7 +4513,7 @@ def enhance_conversation_with_search(query, search_results, deep=False):
         
         The user asked about: "{query}"
         
-        Web research evidence (confidence blends source reputation with
+        Retrieved evidence (saved knowledge is unverified background; source scores blend reputation with
         cross-source corroboration; it is a heuristic, not verified fact-checking):
         {context_summary}
 
@@ -4214,16 +4534,21 @@ def enhance_conversation_with_search(query, search_results, deep=False):
         
         The user asked about: "{query}"
         
-        Web research evidence (confidence blends source reputation with how
+        Retrieved evidence (saved knowledge is unverified background; source scores blend reputation with how
         many independent domains corroborate the same facts; it is a
         heuristic, not verified fact-checking):
         {context_summary}
 
         Answer from the evidence above, not from prior assistant messages or
-        unstated background knowledge. For a current or disputed fact, do not
+        unstated background knowledge. Answer the latest question directly;
+        ignore evidence about a different topic. For numerical facts, include
+        the estimate's date and distinguish estimates from census counts when
+        the evidence provides them. For a current or disputed fact, do not
         guess: if the evidence does not establish it, say so plainly, and do
         not invent names, dates, results, officeholders, quotes, prices, or
-        source details.
+        source details. If no relevant evidence is available, explain briefly
+        that you couldn't verify the requested fact; do not describe unrelated
+        retrieved notes as the answer.
 
         Write like you're answering a person directly, not drafting a report:
         one to three sentences for a simple factual question, no restating
@@ -4237,6 +4562,57 @@ def enhance_conversation_with_search(query, search_results, deep=False):
         """
     
     return conversation_prompt
+
+
+def review_draft_topic(user_prompt, draft, evidence=None):
+    """Review a research draft for topic drift and requested-format failures."""
+    if ollama is None or not (draft or "").strip():
+        return draft
+    evidence_text = "\n".join(
+        f"- {item.get('title', 'Source')}: {item.get('content', '')[:500]}"
+        for item in (evidence or [])[:5]
+    ) or "(No evidence attached.)"
+    review_prompt = (
+        "You are the final response editor. Judge only the user's latest request. "
+        "Return ONLY valid JSON in exactly this shape: "
+        '{"on_topic": true|false, "format_satisfied": true|false, "reason": "short", "revised_answer": "..."}. '
+        "Mark on_topic false if the draft changes subjects, follows unrelated evidence, or answers a different "
+        "question. Mark format_satisfied false if it ignores an explicit count, list, table, or other requested "
+        "format. If either is false, rewrite the answer to address the latest request directly. Do not invent "
+        "facts, sources, titles, or details. If the request asks for recommendations, fulfill it directly rather "
+        "than discussing whether an external source has an official list. If the draft passes, return it unchanged.\n\n"
+        f"Latest user request:\n{user_prompt[:1000]}\n\n"
+        f"Relevant evidence:\n{evidence_text}\n\n"
+        f"Draft answer:\n{draft[:5000]}"
+    )
+    try:
+        response = model_chat(model=MODELS['fast'], messages=[{"role": "system", "content": review_prompt}])
+        parsed = json.loads(response.get("message", {}).get("content", ""))
+        if not isinstance(parsed, dict):
+            return draft
+        on_topic = parsed.get("on_topic") is True
+        format_satisfied = parsed.get("format_satisfied") is True
+        revised = parsed.get("revised_answer")
+        if on_topic and format_satisfied:
+            return draft
+        if isinstance(revised, str) and revised.strip():
+            return revised.strip()
+    except (ValueError, TypeError, json.JSONDecodeError, AttributeError):
+        pass
+    return draft
+
+
+def _verify_evidence(answer_text, evidence, user_prompt=""):
+    """Return fact-check findings plus bounded source provenance for tool callers."""
+    findings = fact_check_answer(answer_text, evidence, user_prompt=user_prompt)
+    return {
+        "answer_text": answer_text,
+        "user_prompt": user_prompt,
+        "findings": findings,
+        "has_findings": bool(findings),
+        "evidence_count": len(evidence or []),
+        "source_urls": [item.get("url") for item in (evidence or []) if item.get("url")],
+    }
 
 
 def fact_check_answer(answer_text, evidence, user_prompt=""):
@@ -4668,7 +5044,11 @@ def save_agent_memory(agent_name, conversation_summary):
     memory_data['conversations'].append(new_entry)
 
     # Keep only last 20 conversations to manage memory size
-    memory_data['conversations'] = memory_data['conversations'][-20:]
+    entries = memory_data['conversations']
+    pinned = [entry for entry in entries if entry.get('pinned')][-20:]
+    remaining = 20 - len(pinned)
+    recent = [entry for entry in entries if not entry.get('pinned')][-remaining:] if remaining else []
+    memory_data['conversations'] = sorted(pinned + recent, key=lambda entry: entry.get('date', ''))
 
     # Save updated memory
     try:
@@ -4677,6 +5057,34 @@ def save_agent_memory(agent_name, conversation_summary):
         events.publish(MEMORY_CREATED, agent_name=agent_name)
     except OSError as e:
         print(f"{Fore.YELLOW}⚠️  Failed to save agent memory for {agent_name}: {e}{Style.RESET_ALL}")
+
+def update_agent_memory(agent_name, entry_date, *, summary=None, pinned=None, forget=False):
+    """Edit a user-selected memory entry without changing other stored entries."""
+    if not re.fullmatch(r"[a-z_]+", agent_name or ""):
+        raise ValueError("Invalid agent memory name")
+    path = os.path.join(core_config.project_root(), "agent_memory", f"{agent_name}_memory.json")
+    with open(path, encoding="utf-8") as handle:
+        data = json.load(handle)
+    entries = data.get("conversations", [])
+    entry = next((item for item in entries if item.get("date") == entry_date), None)
+    if entry is None:
+        raise ValueError("This memory entry has changed or was removed. Reopen memory controls.")
+    if forget:
+        entries.remove(entry)
+    else:
+        if summary is not None:
+            summary = summary.strip()
+            if not summary:
+                raise ValueError("Memory text cannot be empty")
+            entry["summary"] = summary[:4000]
+            entry["topics"] = extract_topics_from_summary(entry["summary"])
+        if pinned is not None:
+            entry["pinned"] = bool(pinned)
+    temporary = path + ".tmp"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=2, ensure_ascii=False)
+    os.replace(temporary, path)
+    return entry
 
 def extract_topics_from_summary(summary):
     """Extract key topics from conversation summary for memory indexing"""
@@ -4704,14 +5112,15 @@ def get_relevant_agent_memory(agent_name, current_topic):
     relevant_conversations = []
     current_words = set(current_topic.lower().split())
     
-    for conv in memory[-10:]:  # Check last 10 conversations
+    for conv in memory:  # Pinned entries survive the normal recent-memory window.
         topics = conv.get('topics', [])
-        if any(topic in current_words for topic in topics):
+        if conv.get("pinned") or any(topic in current_words for topic in topics):
             relevant_conversations.append(conv)
     
     if relevant_conversations:
-        context = f"\n=== Relevant Past Conversations ===\n"
-        for conv in relevant_conversations[-3:]:  # Last 3 relevant conversations
+        context = "\n=== Relevant Past Conversations ===\nHistorical conversation notes are unverified memory, not independent factual evidence. Follow the current user request.\n"
+        selected = sorted(relevant_conversations, key=lambda conv: (bool(conv.get('pinned')), conv.get('date', '')), reverse=True)[:3]
+        for conv in reversed(selected):
             # summary is already bounded at write time (save_agent_memory /
             # _on_task_completed) - re-truncating here ate into it a second
             # time, usually cutting the actual response fragment down to
@@ -4889,19 +5298,8 @@ def load_learning_paths():
 learning_paths = load_learning_paths()
 
 def search_knowledge_base(topic):
-    kb_path = os.path.join(core_config.project_root(), "knowledge_base")
-    results = []
-    for root, _, files in os.walk(kb_path):
-        for file in files:
-            file_path = os.path.join(root, file)
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                    if re.search(topic, content, re.IGNORECASE):
-                        results.append((file, content))
-            except OSError:
-                pass
-    return results
+    from core.knowledge_retrieval import search
+    return search(os.path.join(core_config.project_root(), "knowledge_base"), topic)
 
 # -------------------------------------
 # Self-Improvement Workflow
@@ -5077,7 +5475,7 @@ _SELFIMPROVE_MAX_TARGET_BYTES = 80_000
 # Defense-in-depth alongside the size cap above: even if webagent.py were ever
 # split into smaller files, the pipeline must never pick itself (or this
 # module) as an edit target.
-_SELFIMPROVE_DENYLIST = {"webagent.py", "webagent_gui.py"}
+_SELFIMPROVE_DENYLIST = {"webagent.py", "webagent_gui.py", "nightly.py", "core/knowledge_maintenance.py", "core/autonomous_research.py", "scripts/install_nightly.py"}
 _SELFIMPROVE_REPORTS_DIRNAME = "selfimprove_reports"
 _SELFIMPROVE_STATE_FILENAME = ".last_run.json"
 
@@ -5625,47 +6023,61 @@ def _historian_summary_text(stats):
 
 
 def run_overnight_cycle():
-    """Phase 16: sequences the three real autonomous pipelines that already
-    exist (self-improve, tool-generation, Historian cleanup) and reports on
-    all three together - nothing here does anything /selfimprove, /generate,
-    or /historian don't already do individually; this just runs them back to
-    back and writes one combined report, the way the roadmap's own "morning
-    report" sketch asks for. Historian runs for real (dry_run=False), not a
-    preview, since the point of scheduling this nightly is that saved
-    conversations and knowledge_base actually get deduped/merged/sorted
-    unattended - a preview here would just silently never clean anything up.
-    Saved to knowledge_base/overnight_reports/ and returned as text - what
-    the `feature: overnight` cron action logs, and what /overnight prints
-    for a manual run."""
+    from nightly import cycle_lock
+    try:
+        with cycle_lock(core_config.project_root()):
+            return _run_overnight_cycle_unlocked()
+    except BlockingIOError:
+        return "Another overnight cycle is already running."
+
+
+def _run_overnight_cycle_unlocked():
+    """Knowledge maintenance runs independently of engineering outcomes."""
+    from core.knowledge_maintenance import maintain_knowledge, atomic_json
     run_number = _next_overnight_run_number()
+    sections, errors = [], []
 
-    _, self_improve_report = run_self_improve_cycle()
+    def stage(label, action):
+        try:
+            output = action()
+            sections.append(f"{label}:\n{output}")
+        except Exception as error:
+            errors.append(label)
+            sections.append(f"{label}:\nERROR {type(error).__name__}: {error}")
 
-    available_tools = [(tool.name, tool.description) for tool in tool_registry.list()]
-    tool_gen_report = run_tool_generation_cycle(
-        _selfimprove_coding_chat, _selfimprove_root(), available_tools, agent="self-improve",
-    )
-
-    historian_stats = historian(dry_run=False)
-
-    self_improve_performance = evaluate_recent_performance(agent="self-improve")
-    tool_gen_performance = evaluate_recent_performance(agent="tool-generator")
-
-    report = (
-        f"☀️ GOOD MORNING — Overnight Learning Run #{run_number}\n\n"
-        f"Self-improve:\n{self_improve_report}\n\n"
-        f"Tool generation:\n{tool_gen_report}\n\n"
-        f"Historian cleanup:\n{_historian_summary_text(historian_stats)}\n\n"
-        f"{_overnight_performance_line('Self-improve performance', self_improve_performance)}\n"
-        f"{_overnight_performance_line('Tool-generation performance', tool_gen_performance)}\n\n"
-        "Review pending tool proposals under gnosis_workspace/proposals/ and any staged "
-        "self-improve change via `git diff` before committing anything - nothing here "
-        "commits, pushes, or registers a generated tool/skill automatically.\n\n"
-        "Note: Gnosis does not run as a persistent process between scheduled runs - this "
-        "happened via a real, unattended cron trigger. If you want to chat with it "
-        "directly, you'll need to relaunch `python3 webagent.py` yourself.\n"
-    )
+    # Build usable retrieval data even if the optional model or legacy cleanup fails.
+    stage("Knowledge consolidation", lambda: json.dumps(maintain_knowledge(core_config.project_root()), indent=2))
+    stage("Historian cleanup", lambda: _historian_summary_text(historian(dry_run=False)))
+    def research():
+        from core.autonomous_research import run_research
+        result = run_research(core_config.project_root())
+        if result.get("errors"):
+            raise RuntimeError(json.dumps(result))
+        return json.dumps(result)
+    stage("Gap-driven research", research)
+    def study():
+        from core.knowledge_maintenance import learn_from_sources
+        maintain_knowledge(core_config.project_root())
+        result = learn_from_sources(core_config.project_root())
+        if any(item.get("kind") == "execution" for item in result.get("failures", [])):
+            raise RuntimeError(json.dumps(result))
+        return json.dumps(result)
+    stage("Source-backed learning", study)
+    stage("Retrieval refresh", lambda: json.dumps(maintain_knowledge(core_config.project_root()), indent=2))
+    stage("Self-improve", lambda: run_self_improve_cycle()[1])
+    stage("Tool generation", lambda: run_tool_generation_cycle(
+        _selfimprove_coding_chat, _selfimprove_root(),
+        [(tool.name, tool.description) for tool in tool_registry.list()], agent="self-improve"))
+    stage("Learning reflection", lambda: json.dumps(consolidated_lessons(), ensure_ascii=False))
+    report = (f"☀️ GOOD MORNING — Overnight Learning Run #{run_number}\n\n"
+              + "\n\n".join(sections)
+              + "\n\nStatus: " + ("partial failure: " + ", ".join(errors) if errors else "completed")
+              + "\nKnowledge is consolidated for retrieval; model weights are unchanged. "
+                "Review code changes and tool proposals before using them. "
+                "To chat, relaunch `python3 webagent.py`.\n")
     _write_overnight_report(run_number, report)
+    atomic_json(os.path.join(core_config.project_root(), "knowledge_state", "overnight_status.json"),
+                {"finished_at": datetime.now().isoformat(), "errors": errors, "run": run_number})
     return report
 
 
@@ -5721,7 +6133,7 @@ def ask_wiki(query):
 # -------------------------------------
 # Historian Integration (/historian)
 # -------------------------------------
-_HISTORIAN_UNSORTED_DIRS = {"web_evidence"}
+_HISTORIAN_UNSORTED_DIRS = {"web_evidence", "overnight_reports", "selfimprove_reports", ".historian_staging"}
 # General English filler, well beyond TAG_STOP_WORDS's narrow query-tag list -
 # needed because Historian tags free-form personal chat text, not search queries.
 _GENERAL_STOPWORDS = {
@@ -5812,7 +6224,7 @@ def _historian_classify_topics(titles, label="items"):
                     break
                 if attempt == 0:
                     print(f"{Fore.YELLOW}    Retrying batch {chunk_num} (unexpected response length)...{Style.RESET_ALL}")
-            except (ValueError, TypeError, json.JSONDecodeError, AttributeError):
+            except Exception:
                 if attempt == 0:
                     print(f"{Fore.YELLOW}    Retrying batch {chunk_num} (couldn't parse response)...{Style.RESET_ALL}")
     return results
@@ -5862,9 +6274,11 @@ def historian_clean_knowledge_base(dry_run=False):
     print(f"{Fore.CYAN}  Historian: scanning knowledge_base for duplicate content...{Style.RESET_ALL}")
     hash_to_paths = {}
     for root, dirs, files in os.walk(kb_path):
-        dirs[:] = [d for d in dirs if d not in _HISTORIAN_UNSORTED_DIRS]
+        dirs[:] = [d for d in dirs if d not in _HISTORIAN_UNSORTED_DIRS and not d.startswith(".") and not os.path.islink(os.path.join(root, d))]
         for name in files:
             path = os.path.join(root, name)
+            if name.startswith(".") or os.path.islink(path):
+                continue
             try:
                 with open(path, "rb") as handle:
                     digest = hashlib.sha256(handle.read()).hexdigest()
@@ -5880,6 +6294,8 @@ def historian_clean_knowledge_base(dry_run=False):
             stats["duplicates_removed"] += 1
             if not dry_run:
                 try:
+                    from core.knowledge_maintenance import preserve_source
+                    preserve_source(stale, core_config.project_root())
                     os.remove(stale)
                 except OSError:
                     pass
@@ -5888,7 +6304,7 @@ def historian_clean_knowledge_base(dry_run=False):
         f"{'found (preview only)' if dry_run else 'removed'}{Style.RESET_ALL}"
     )
 
-    top_level_files = [name for name in os.listdir(kb_path) if os.path.isfile(os.path.join(kb_path, name))]
+    top_level_files = [name for name in os.listdir(kb_path) if not name.startswith(".") and not os.path.islink(os.path.join(kb_path, name)) and os.path.isfile(os.path.join(kb_path, name))]
     file_entries = []
     for name in top_level_files:
         path = os.path.join(kb_path, name)
@@ -5905,7 +6321,7 @@ def historian_clean_knowledge_base(dry_run=False):
         print(f"{Fore.CYAN}  Historian: sorting {len(file_entries)} unfiled knowledge_base entr"
               f"{'y' if len(file_entries) == 1 else 'ies'} into topics...{Style.RESET_ALL}")
     classified = _historian_classify_topics(
-        [name.replace("_", " ") for name, _, _ in file_entries], label="knowledge_base files"
+        [name.replace("_", " ") + " " + content[:1000] for name, _, content in file_entries], label="knowledge_base files"
     )
     assignments = []
     for (name, path, content), category in zip(file_entries, classified):
@@ -5916,24 +6332,11 @@ def historian_clean_knowledge_base(dry_run=False):
         assignments.append((path, bucket, filename))
 
     if not dry_run and assignments:
-        # Move every sorted file into staging first, then into its bucket.
-        # Moving one at a time in listdir order can otherwise hit a bucket
-        # name that collides with a sibling flat file that hasn't been moved
-        # out of the way yet (see _historian_ensure_bucket_dir).
-        staging_dir = os.path.join(kb_path, ".historian_staging")
-        os.makedirs(staging_dir, exist_ok=True)
-        staged = []
-        for i, (path, bucket, filename) in enumerate(assignments):
-            staging_path = os.path.join(staging_dir, f"{i}_{filename}")
-            os.replace(path, staging_path)
-            staged.append((staging_path, bucket, filename))
-        for staging_path, bucket, filename in staged:
+        # Each move is atomic; an interrupted run leaves remaining sources in
+        # their original locations for the next pass, never stranded in staging.
+        for path, bucket, filename in assignments:
             dest_dir = _historian_ensure_bucket_dir(os.path.join(kb_path, bucket))
-            os.replace(staging_path, _historian_unique_destination(dest_dir, filename))
-        try:
-            os.rmdir(staging_dir)
-        except OSError:
-            pass
+            os.replace(path, _historian_unique_destination(dest_dir, filename))
     if file_entries:
         print(
             f"{Fore.GREEN}  Historian: {'would sort' if dry_run else 'sorted'} {stats['files_sorted']} "
@@ -5953,9 +6356,13 @@ def historian_clean_knowledge_base(dry_run=False):
                     record = json.load(handle)
             except (OSError, json.JSONDecodeError):
                 continue
+            if not isinstance(record, dict):
+                continue
             url = record.get("url")
-            if url:
-                by_url.setdefault(url, []).append((record.get("captured_at", ""), path))
+            content = record.get("content")
+            if url and isinstance(content, str):
+                key = (url, hashlib.sha256(content.encode("utf-8")).hexdigest())
+                by_url.setdefault(key, []).append((record.get("captured_at", ""), path))
         for entries in by_url.values():
             if len(entries) < 2:
                 continue
@@ -5964,6 +6371,8 @@ def historian_clean_knowledge_base(dry_run=False):
                 stats["web_evidence_duplicates_removed"] += 1
                 if not dry_run:
                     try:
+                        from core.knowledge_maintenance import preserve_source
+                        preserve_source(stale_path, core_config.project_root())
                         os.remove(stale_path)
                     except OSError:
                         pass
@@ -6023,6 +6432,8 @@ def historian_merge_conversations(dry_run=False):
             stats["skipped_empty"] += 1
             if not dry_run:
                 try:
+                    from core.knowledge_maintenance import preserve_source
+                    preserve_source(path, core_config.project_root())
                     os.remove(path)
                 except OSError:
                     pass
@@ -6057,6 +6468,8 @@ def historian_merge_conversations(dry_run=False):
         except OSError:
             continue  # leave the source in place if the merge write failed
         try:
+            from core.knowledge_maintenance import preserve_source
+            preserve_source(path, core_config.project_root())
             os.remove(path)
         except OSError:
             pass
@@ -6119,8 +6532,10 @@ def historian_clean_agent_memory(dry_run=False):
             continue
         memory_data["conversations"] = deduped
         try:
-            with open(path, "w", encoding="utf-8") as handle:
-                json.dump(memory_data, handle, indent=2, ensure_ascii=False)
+            from core.knowledge_maintenance import preserve_source
+            preserve_source(path, core_config.project_root())
+            from core.knowledge_maintenance import atomic_json
+            atomic_json(path, memory_data)
         except OSError:
             pass
 
@@ -6731,7 +7146,8 @@ def _execute_cron_task(task):
         if action_type == "feature" and action_payload == "selfimprove":
             return run_self_improve_cycle()
         if action_type == "feature" and action_payload == "overnight":
-            return True, run_overnight_cycle()
+            report = run_overnight_cycle()
+            return "Status: partial failure:" not in report, report
         return False, f"Unknown action: {action_type}:{action_payload}"
     except Exception as error:
         return False, f"{type(error).__name__}: {error}"
@@ -7299,8 +7715,6 @@ def _cmd_tts(prompt):
         print("Install project dependencies with: ./venv/bin/python -m pip install -r requirements.txt")
         return
     context.tts_mode = not context.tts_mode
-    if context.tts_mode and context.voice_mode:
-        context.voice_mode = False  # Ensure only one audio mode is active
     print(f"{Fore.YELLOW}TTS mode {'ON' if context.tts_mode else 'OFF'}.")
 
 
@@ -7621,6 +8035,16 @@ def _cmd_report(prompt):
     observability/__init__.py for what's deliberately not in this report
     and why."""
     print(f"\n{Fore.CYAN}📈 Observability report{Style.RESET_ALL}")
+    from observability.model_metrics import recent_calls
+    print(f"\n{Fore.YELLOW}Recent Ollama calls (this session, up to 100):{Style.RESET_ALL}")
+    for call in list(recent_calls)[-5:]:
+        first = call.get('first_content_seconds')
+        first_text = f", first text {first:.2f}s" if first is not None else ''
+        speed = call.get('tokens_per_second')
+        speed_text = f", {speed:.1f} tokens/s" if speed is not None else ''
+        print(f"  {call['model']}: {call['elapsed_seconds']:.2f}s{first_text}{speed_text}")
+    if not recent_calls:
+        print("  No calls recorded yet.")
 
     completion = task_completion_stats()
     print(f"\n{Fore.YELLOW}Task completion (chat turns with an active persona):{Style.RESET_ALL}")
@@ -7771,8 +8195,6 @@ def _cmd_loadconv(prompt):
 
 def _cmd_voice(prompt):
     context.voice_mode = not context.voice_mode
-    if context.voice_mode and context.tts_mode:
-        context.tts_mode = False
     if context.voice_mode:
         play_audio_effect("mic_on")
     print(f"{Fore.YELLOW}Voice {'ON' if context.voice_mode else 'OFF'}.")
@@ -7904,6 +8326,13 @@ def _register_tools():
     tool_registry.register(DesignGetFileTool(penpot.get_file))
     tool_registry.register(DesignAddBoardTool(penpot.add_board))
     tool_registry.register(DesignAddShapeTool(penpot.add_shape))
+    tool_registry.register(ConversationInspectTool(_inspect_conversation))
+    tool_registry.register(EvidenceVerifyTool(_verify_evidence))
+    tool_registry.register(KnowledgeRelatedTool(_knowledge_related))
+    tool_registry.register(KnowledgeForgetTool(_knowledge_forget))
+    tool_registry.register(RepoInspectTool(_inspect_repository))
+    tool_registry.register(ModelStatusTool(_model_status))
+    tool_registry.register(TaskPlanTool(_build_task_plan))
 
 
 def _register_skills():
@@ -7911,6 +8340,10 @@ def _register_skills():
     SkillRegistry.register() validates each skill's required_tools against
     tool_registry at registration time."""
     skill_registry.register(ResearchTopicSkill())
+    skill_registry.register(ConversationRecoverSkill())
+    skill_registry.register(ResearchVerifySkill())
+    skill_registry.register(KnowledgeMaintainSkill())
+    skill_registry.register(RepositoryChangeReviewSkill())
 
 
 def _on_task_completed(agent_name, user_input, response):
@@ -7981,24 +8414,27 @@ def _handle_unmatched_prompt(prompt):
         print(f"{Fore.YELLOW}{random.choice(funny_errors)}{Style.RESET_ALL}")
         return
 
+    context.assistant_convo = [m for m in context.assistant_convo if not m.get('_turn_context')]
+    direct = is_direct_chat(prompt) and not context.deep_think_mode
+
     # Web search is planned by the model, one targeted query at a time.
-    if (context.web_search_mode or context.deep_think_mode) and not prompt.startswith("/"):
+    if context.deep_think_mode or (context.web_search_mode and not direct):
         update_user_notes_softly(prompt, [])
         print(f"{Fore.CYAN}🧭 Letting the model plan web research...{Style.RESET_ALL}\n")
         evidence = model_directed_web_research(prompt)
-        context.assistant_convo.append({"role": "system", "content": enhance_conversation_with_search(prompt, evidence, deep=context.deep_think_mode)})
+        context.assistant_convo.append({"role": "system", "_turn_context": True, "content": enhance_conversation_with_search(prompt, evidence, deep=context.deep_think_mode)})
         tool_action = _select_tool_action(prompt)
         if tool_action.get("tool"):
             tool_summary = _execute_tool_action(tool_action)
             if tool_summary:
                 print(f"{Fore.CYAN}🛠️  Model selected tool: {tool_action['tool']}{Style.RESET_ALL}")
                 context.assistant_convo.append({
-                    "role": "system",
+                    "role": "system", "_turn_context": True,
                     "content": f"Additional context from a Gnosis capability you chose to use:\n{tool_summary}",
                 })
         persona_prompt = get_persona_system_prompt()
         if persona_prompt:
-            context.assistant_convo.append({"role": "system", "content": persona_prompt})
+            context.assistant_convo.append({"role": "system", "_turn_context": True, "content": persona_prompt})
         context.assistant_convo.append({"role": "user", "content": prompt})
         response = stream_response()
         if response and response.strip():
@@ -8037,21 +8473,21 @@ def _handle_unmatched_prompt(prompt):
     # Add context as system message before user prompt
     if context_info:
         context_message = " | ".join(context_info)
-        context.assistant_convo.append({"role": "system", "content": f"[Context: {context_message}]"})
+        context.assistant_convo.append({"role": "system", "_turn_context": True, "content": f"[Context: {context_message}]"})
 
-    tool_action = _select_tool_action(processed_prompt)
+    tool_action = {"tool": None} if direct else _select_tool_action(processed_prompt)
     if tool_action.get("tool"):
         tool_summary = _execute_tool_action(tool_action)
         if tool_summary:
             print(f"{Fore.CYAN}🛠️  Model selected tool: {tool_action['tool']}{Style.RESET_ALL}")
             context.assistant_convo.append({
-                "role": "system",
+                "role": "system", "_turn_context": True,
                 "content": f"Additional context from a Gnosis capability you chose to use:\n{tool_summary}",
             })
 
     persona_prompt = get_persona_system_prompt()
     if persona_prompt:
-        context.assistant_convo.append({"role": "system", "content": persona_prompt})
+        context.assistant_convo.append({"role": "system", "_turn_context": True, "content": persona_prompt})
 
     context.assistant_convo.append({"role": "user", "content": processed_prompt})
 

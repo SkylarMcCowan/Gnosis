@@ -15,3 +15,7 @@ class ModelUnavailableError(GnosisError, RuntimeError):
     """The configured model backend (e.g. Ollama) isn't available to serve
     a request. Also a RuntimeError, since that's what callers already
     catch/expect from before this hierarchy existed."""
+
+
+class ChatCancelled(GnosisError):
+    """A user stopped a turn; propagate through progress callbacks as control flow."""

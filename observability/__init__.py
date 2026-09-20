@@ -11,16 +11,9 @@ duplication, not a new capability.
 
 Deliberately not built, for stated reasons rather than left silently
 missing:
-- Token/model usage, Execution time: the obvious place to capture this is
-  `core/models.py`'s `chat()` funnel - every model call in the whole app
-  passes through it. But adding a real subscriber's disk-writing side
-  effect there would touch every one of the ~15 existing tests across
-  `test_fact_check.py`/`test_fallback_research_query.py`/`test_smoke.py`
-  that mock a model call without `isolated_data_dir`, since none of them
-  were ever written expecting `chat()` to touch disk. Retrofitting
-  isolation onto all of them is a disproportionate blast radius for this
-  one metric; a real implementation wants a different design (e.g. opt-in
-  instrumentation) that deserves its own pass, not a guess forced in here.
+- Persistent token/model usage and execution time are now available through
+  model_metrics.py's opt-in JSONL collector at the core/models.py funnel.
+  Recent timings are kept in memory by default without prompt/response text.
 - Regression rate: `learning/experiments.py`'s `run_learning_experiment`
   already computes a `regressed` flag, but nothing in production calls it
   yet, so there's no real historical data to report a *rate* over.

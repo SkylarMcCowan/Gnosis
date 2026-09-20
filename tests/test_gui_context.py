@@ -31,8 +31,15 @@ def qapp():
 
 
 @pytest.fixture
-def gui(qapp, isolated_data_dir):
+def gui(qapp, isolated_data_dir, monkeypatch):
+    from voice import runtime
+    from voice_fakes import FakeListener
+    monkeypatch.setattr(runtime, "ListeningWorker", FakeListener)
     window = webagent_gui.WebAgentGUI()
+    model = isolated_data_dir / "speech-model"
+    (model / "am").mkdir(parents=True)
+    (model / "am" / "final.mdl").touch()
+    window.voice_session.model_path = str(model)
     yield window
     window.close()
     window.deleteLater()

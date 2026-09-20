@@ -93,3 +93,9 @@ self-improve specifically.
 - See `docs/cron.md`'s "The `selfimprove` feature" section for the full
   cron-scheduling safety mechanics, and for how to schedule it nightly via
   `/cron add <schedule> feature: selfimprove`.
+
+## Nightly knowledge learning
+
+The unattended knowledge-learning pipeline is separate from code repair. See
+[nightly_learning.md](nightly_learning.md) for the idle-aware macOS schedule,
+source-backed study notes, persistent retrieval index, and recovery controls.

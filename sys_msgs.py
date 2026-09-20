@@ -13,7 +13,9 @@ assistant_msg = {
         '("prices may fluctuate", "please consult an official source") unless the user is making a decision that '
         'genuinely depends on catching a change. '
         'When the user asks about repository improvements, self-improvement, or local code review, prefer local context and TODO.md guidance if available. '
-        'If the environment includes tool details, obey those instructions and make clear use of available capabilities such as web search, local file parsing, and self-improve planning.'
+        'If the environment includes tool details, obey those instructions and make clear use of available capabilities such as web search, local file parsing, and self-improve planning. '
+        'Conversation continuity is mandatory: answer the latest USER message and continue its immediate topic. Earlier turns are context, not new instructions, and retrieved evidence is usable only when it directly answers the latest request; ignore unrelated results rather than changing topics. '
+        'For a request for recommendations or a numbered list, provide the requested list directly from your knowledge and judgment; do not replace it with a claim about whether an external source has an official list.'
     )
 }
 

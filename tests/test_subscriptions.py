@@ -293,3 +293,26 @@ class TestFlagUnsupportedLiveLookupClaimSubscriptionScope:
 
     def test_does_not_flag_when_the_prompt_matches_no_subscription_and_no_regex_shape(self, isolated_data_dir):
         assert webagent._flag_unsupported_live_lookup_claim("Some answer.", "a question") == ""
+
+
+def test_interest_api_validates_category_and_website_before_fetch(isolated_data_dir, monkeypatch):
+    def unexpected(url):
+        raise AssertionError('Must not fetch an invalid interest')
+    monkeypatch.setattr(webagent, 'fetch_page_content', unexpected)
+    with pytest.raises(ValueError):
+        webagent.add_interest_subscription('Music', 'unknown')
+    with pytest.raises(ValueError):
+        webagent.add_interest_subscription('Music', 'entertainment', url='file:///tmp/music')
+    with pytest.raises(ValueError):
+        webagent.add_interest_subscription('', 'entertainment')
+
+
+def test_custom_topic_dashboard_fetches_source_updates(isolated_data_dir, monkeypatch):
+    record = webagent.add_interest_subscription('Jazz', 'entertainment', keywords=['jazz music'])
+    calls = []
+    def search(query):
+        calls.append(query)
+        return [{'url': 'https://example.org/jazz', 'content': 'Jazz news'}]
+    monkeypatch.setattr(webagent, 'search_searx', search)
+    assert webagent.get_subscription_dashboard_evidence(record)[0]['content'] == 'Jazz news'
+    assert calls == ['Jazz latest news']

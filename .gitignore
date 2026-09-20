@@ -14,3 +14,19 @@ user_details.log
 weather_station/tile_cache/*
 tv/logo_cache/*
 weather_station/config.json
+device_watch/state/
+network_map_state/
+*.device-watch.json
+device_watch/__pycache__/
+
+# Downloaded local speech recognition models
+voice/models/
+voice/__pycache__/
+voice_settings.json
+
+# Local knowledge retrieval preferences
+knowledge_settings.json
+knowledge_settings.tmp
+
+# Derived nightly knowledge catalog, passage index, and recoverable originals
+knowledge_state/

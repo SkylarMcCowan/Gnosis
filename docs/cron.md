@@ -420,3 +420,10 @@ change), headless `--cron-task` execution, and the autonomous planner across
 single- and multi-turn requests. That's the safe way to exercise this code
 again in the future - never point it at a real crontab you care about until
 you're confident in a change.
+
+## macOS nightly learning
+
+The dedicated `scripts/install_nightly.py` installer migrates the overnight task to
+an idle-aware LaunchAgent with wake/login catch-up. It leaves other cron jobs intact.
+Use `./venv/bin/python -B nightly.py --status` for its current status. Details and
+recovery paths are in [nightly_learning.md](nightly_learning.md).
