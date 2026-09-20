@@ -18,6 +18,14 @@ device_watch/state/
 network_map_state/
 *.device-watch.json
 device_watch/__pycache__/
+tv/watch_history.json
+weather_station/radio_stations.json
+radio/catalog.json
+radio/library.json
+stocks_tracker/stocks_tracker.json
+subscriptions/subscriptions.json
+tv/watch_history.json
+worklog/worklog.json
 
 # Downloaded local speech recognition models
 voice/models/
@@ -46,3 +54,4 @@ stocks_tracker/stocks_tracker.json
 subscriptions/subscriptions.json
 weather_station/radio_stations.json
 worklog/worklog.json
+games/zuma_endless_save.json
