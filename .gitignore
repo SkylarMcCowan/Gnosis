@@ -30,3 +30,19 @@ knowledge_settings.tmp
 
 # Derived nightly knowledge catalog, passage index, and recoverable originals
 knowledge_state/
+stocks_tracker/stocks_tracker.json
+subscriptions/subscriptions.json
+tests/fixtures/chat_retrieval_cases.json
+tv/watch_history.json
+weather_station/radio_stations.json
+worklog/worklog.json
+games/zuma_endless_save.json
+radio/catalog.json
+radio/library.json
+games/zuma_endless_save.json
+radio/catalog.json
+radio/library.json
+stocks_tracker/stocks_tracker.json
+subscriptions/subscriptions.json
+weather_station/radio_stations.json
+worklog/worklog.json
