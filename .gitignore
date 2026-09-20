@@ -26,6 +26,7 @@ stocks_tracker/stocks_tracker.json
 subscriptions/subscriptions.json
 tv/watch_history.json
 worklog/worklog.json
+user_details.log
 
 # Downloaded local speech recognition models
 voice/models/
@@ -38,6 +39,7 @@ knowledge_settings.tmp
 
 # Derived nightly knowledge catalog, passage index, and recoverable originals
 knowledge_state/
+.DS_Store
 stocks_tracker/stocks_tracker.json
 subscriptions/subscriptions.json
 tests/fixtures/chat_retrieval_cases.json
