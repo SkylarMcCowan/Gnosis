@@ -1,0 +1,54 @@
+[
+  {
+    "id": "Wands",
+    "name": "Wands",
+    "gd_name": "Wands",
+    "element": "Fire",
+    "world": "Atziluth",
+    "description": "Will, impulse and the capacity to initiate.",
+    "sources": [
+      "777",
+      "book-t",
+      "thoth"
+    ]
+  },
+  {
+    "id": "Cups",
+    "name": "Cups",
+    "gd_name": "Cups",
+    "element": "Water",
+    "world": "Briah",
+    "description": "Reception, feeling and the capacity to contain.",
+    "sources": [
+      "777",
+      "book-t",
+      "thoth"
+    ]
+  },
+  {
+    "id": "Swords",
+    "name": "Swords",
+    "gd_name": "Swords",
+    "element": "Air",
+    "world": "Yetzirah",
+    "description": "Distinction, thought and the capacity to formulate.",
+    "sources": [
+      "777",
+      "book-t",
+      "thoth"
+    ]
+  },
+  {
+    "id": "Disks",
+    "name": "Disks",
+    "gd_name": "Pentacles",
+    "element": "Earth",
+    "world": "Assiah",
+    "description": "Embodiment, resources and the capacity to manifest.",
+    "sources": [
+      "777",
+      "book-t",
+      "thoth"
+    ]
+  }
+]

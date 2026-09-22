@@ -207,15 +207,10 @@ def test_learning_reports_a_real_recorded_experience(isolated_data_dir, capsys):
     assert "100%" in out
 
 
-def test_generate_dispatches(monkeypatch, isolated_data_dir, capsys):
-    calls = []
-    monkeypatch.setattr(
-        webagent, "run_tool_generation_cycle",
-        lambda coding_chat_fn, repo_root, available_tools, agent=None: calls.append(agent) or "a report",
-    )
-    dispatch("/generate")
-    assert calls == ["self-improve"]
-    assert "a report" in capsys.readouterr().out
+def test_unsupervised_dispatches(monkeypatch, isolated_data_dir, capsys):
+    monkeypatch.setattr(webagent, "run_overnight_cycle", lambda: "research report")
+    dispatch("/unsupervised")
+    assert "research report" in capsys.readouterr().out
 
 
 def test_report_dispatches_and_prints_a_real_metrics_report(isolated_data_dir, capsys):

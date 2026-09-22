@@ -1,0 +1,252 @@
+[
+  {
+    "id": 1,
+    "name": "Kether",
+    "hebrew": "כתר",
+    "translation": "Crown",
+    "planet": "Primum Mobile (first motion)",
+    "pillar": "Middle",
+    "divine_name": "Eheieh",
+    "archangel": "Metatron",
+    "angelic_order": "Chaioth ha-Qadesh",
+    "traditional": "Undivided source before differentiated force or form.",
+    "basic": "Begin with potential, before asking how it becomes a particular activity.",
+    "position": [
+      300,
+      75
+    ],
+    "minor_number": 1,
+    "worlds": "Each Sephirah is considered in all four worlds: Atziluth, Briah, Yetzirah and Assiah. Do not identify a Sephirah with only one world.",
+    "element": "No single exclusive elemental attribution in this introductory table.",
+    "sources": [
+      "777"
+    ],
+    "version": "Hermetic / Golden Dawn-derived table; transliterations normalized",
+    "source_note": "Common Hermetic teaching convention: divine names with Atziluth, archangels with Briah, angelic orders with Yetzirah and celestial spheres with Assiah. Liber 777 labels some divine and angelic columns within Assiah instead; do not equate these world schemes without checking the edition. Spellings and some names vary."
+  },
+  {
+    "id": 2,
+    "name": "Chokmah",
+    "hebrew": "חכמה",
+    "translation": "Wisdom",
+    "planet": "Zodiac / fixed stars",
+    "pillar": "Mercy",
+    "divine_name": "Yah",
+    "archangel": "Ratziel",
+    "angelic_order": "Auphanim",
+    "traditional": "Dynamic outpouring, the first differentiation of unity.",
+    "basic": "Consider force beginning to move, before it acquires a stable container.",
+    "position": [
+      480,
+      185
+    ],
+    "minor_number": 2,
+    "worlds": "Each Sephirah is considered in all four worlds: Atziluth, Briah, Yetzirah and Assiah. Do not identify a Sephirah with only one world.",
+    "element": "No single exclusive elemental attribution in this introductory table.",
+    "sources": [
+      "777"
+    ],
+    "version": "Hermetic / Golden Dawn-derived table; transliterations normalized",
+    "source_note": "Common Hermetic teaching convention: divine names with Atziluth, archangels with Briah, angelic orders with Yetzirah and celestial spheres with Assiah. Liber 777 labels some divine and angelic columns within Assiah instead; do not equate these world schemes without checking the edition. Spellings and some names vary."
+  },
+  {
+    "id": 3,
+    "name": "Binah",
+    "hebrew": "בינה",
+    "translation": "Understanding",
+    "planet": "Saturn",
+    "pillar": "Severity",
+    "divine_name": "YHVH Elohim",
+    "archangel": "Tzaphqiel",
+    "angelic_order": "Aralim",
+    "traditional": "Form, limitation and the supernal matrix in which force becomes intelligible.",
+    "basic": "A boundary makes formation possible; it is not simply an obstacle.",
+    "position": [
+      120,
+      185
+    ],
+    "minor_number": 3,
+    "worlds": "Each Sephirah is considered in all four worlds: Atziluth, Briah, Yetzirah and Assiah. Do not identify a Sephirah with only one world.",
+    "element": "No single exclusive elemental attribution in this introductory table.",
+    "sources": [
+      "777"
+    ],
+    "version": "Hermetic / Golden Dawn-derived table; transliterations normalized",
+    "source_note": "Common Hermetic teaching convention: divine names with Atziluth, archangels with Briah, angelic orders with Yetzirah and celestial spheres with Assiah. Liber 777 labels some divine and angelic columns within Assiah instead; do not equate these world schemes without checking the edition. Spellings and some names vary."
+  },
+  {
+    "id": 4,
+    "name": "Chesed",
+    "hebrew": "חסד",
+    "translation": "Mercy",
+    "planet": "Jupiter",
+    "pillar": "Mercy",
+    "divine_name": "El",
+    "archangel": "Tzadqiel",
+    "angelic_order": "Chasmalim",
+    "traditional": "Ordering, expansion and the establishment of a coherent domain.",
+    "basic": "Ask what supports stability, and when stability becomes excessive.",
+    "position": [
+      480,
+      335
+    ],
+    "minor_number": 4,
+    "worlds": "Each Sephirah is considered in all four worlds: Atziluth, Briah, Yetzirah and Assiah. Do not identify a Sephirah with only one world.",
+    "element": "No single exclusive elemental attribution in this introductory table.",
+    "sources": [
+      "777"
+    ],
+    "version": "Hermetic / Golden Dawn-derived table; transliterations normalized",
+    "source_note": "Common Hermetic teaching convention: divine names with Atziluth, archangels with Briah, angelic orders with Yetzirah and celestial spheres with Assiah. Liber 777 labels some divine and angelic columns within Assiah instead; do not equate these world schemes without checking the edition. Spellings and some names vary."
+  },
+  {
+    "id": 5,
+    "name": "Geburah",
+    "hebrew": "גבורה",
+    "translation": "Strength",
+    "planet": "Mars",
+    "pillar": "Severity",
+    "divine_name": "Elohim Gibor",
+    "archangel": "Khamael",
+    "angelic_order": "Seraphim",
+    "traditional": "Severity, discrimination and the force that cuts back excess.",
+    "basic": "Ask what must be tested or restricted for the whole to remain balanced.",
+    "position": [
+      120,
+      335
+    ],
+    "minor_number": 5,
+    "worlds": "Each Sephirah is considered in all four worlds: Atziluth, Briah, Yetzirah and Assiah. Do not identify a Sephirah with only one world.",
+    "element": "No single exclusive elemental attribution in this introductory table.",
+    "sources": [
+      "777"
+    ],
+    "version": "Hermetic / Golden Dawn-derived table; transliterations normalized",
+    "source_note": "Common Hermetic teaching convention: divine names with Atziluth, archangels with Briah, angelic orders with Yetzirah and celestial spheres with Assiah. Liber 777 labels some divine and angelic columns within Assiah instead; do not equate these world schemes without checking the edition. Spellings and some names vary."
+  },
+  {
+    "id": 6,
+    "name": "Tiphareth",
+    "hebrew": "תפארת",
+    "translation": "Beauty",
+    "planet": "Sun",
+    "pillar": "Middle",
+    "divine_name": "YHVH Eloah ve-Daath",
+    "archangel": "Raphael",
+    "angelic_order": "Malachim",
+    "traditional": "Solar harmony and mediation between the higher and lower portions of the Tree.",
+    "basic": "Relate the parts to a center: equilibrium is an active reconciliation.",
+    "position": [
+      300,
+      445
+    ],
+    "minor_number": 6,
+    "worlds": "Each Sephirah is considered in all four worlds: Atziluth, Briah, Yetzirah and Assiah. Do not identify a Sephirah with only one world.",
+    "element": "No single exclusive elemental attribution in this introductory table.",
+    "sources": [
+      "777"
+    ],
+    "version": "Hermetic / Golden Dawn-derived table; transliterations normalized",
+    "source_note": "Common Hermetic teaching convention: divine names with Atziluth, archangels with Briah, angelic orders with Yetzirah and celestial spheres with Assiah. Liber 777 labels some divine and angelic columns within Assiah instead; do not equate these world schemes without checking the edition. Spellings and some names vary."
+  },
+  {
+    "id": 7,
+    "name": "Netzach",
+    "hebrew": "נצח",
+    "translation": "Victory",
+    "planet": "Venus",
+    "pillar": "Mercy",
+    "divine_name": "YHVH Tzabaoth",
+    "archangel": "Haniel",
+    "angelic_order": "Elohim",
+    "traditional": "Desire, attraction and the persistence of vital forces.",
+    "basic": "Ask how desire sustains action and how it can exceed measure.",
+    "position": [
+      480,
+      575
+    ],
+    "minor_number": 7,
+    "worlds": "Each Sephirah is considered in all four worlds: Atziluth, Briah, Yetzirah and Assiah. Do not identify a Sephirah with only one world.",
+    "element": "No single exclusive elemental attribution in this introductory table.",
+    "sources": [
+      "777"
+    ],
+    "version": "Hermetic / Golden Dawn-derived table; transliterations normalized",
+    "source_note": "Common Hermetic teaching convention: divine names with Atziluth, archangels with Briah, angelic orders with Yetzirah and celestial spheres with Assiah. Liber 777 labels some divine and angelic columns within Assiah instead; do not equate these world schemes without checking the edition. Spellings and some names vary."
+  },
+  {
+    "id": 8,
+    "name": "Hod",
+    "hebrew": "הוד",
+    "translation": "Splendour",
+    "planet": "Mercury",
+    "pillar": "Severity",
+    "divine_name": "Elohim Tzabaoth",
+    "archangel": "Michael",
+    "angelic_order": "Beni Elohim",
+    "traditional": "Articulation, analysis and the formulation of experience.",
+    "basic": "Ask how an impulse is organized into language, method or pattern.",
+    "position": [
+      120,
+      575
+    ],
+    "minor_number": 8,
+    "worlds": "Each Sephirah is considered in all four worlds: Atziluth, Briah, Yetzirah and Assiah. Do not identify a Sephirah with only one world.",
+    "element": "No single exclusive elemental attribution in this introductory table.",
+    "sources": [
+      "777"
+    ],
+    "version": "Hermetic / Golden Dawn-derived table; transliterations normalized",
+    "source_note": "Common Hermetic teaching convention: divine names with Atziluth, archangels with Briah, angelic orders with Yetzirah and celestial spheres with Assiah. Liber 777 labels some divine and angelic columns within Assiah instead; do not equate these world schemes without checking the edition. Spellings and some names vary."
+  },
+  {
+    "id": 9,
+    "name": "Yesod",
+    "hebrew": "יסוד",
+    "translation": "Foundation",
+    "planet": "Moon",
+    "pillar": "Middle",
+    "divine_name": "Shaddai El Chai",
+    "archangel": "Gabriel",
+    "angelic_order": "Kerubim",
+    "traditional": "The formative foundation, images and mediation into manifestation.",
+    "basic": "Consider the pattern holding an activity together before its outward result.",
+    "position": [
+      300,
+      685
+    ],
+    "minor_number": 9,
+    "worlds": "Each Sephirah is considered in all four worlds: Atziluth, Briah, Yetzirah and Assiah. Do not identify a Sephirah with only one world.",
+    "element": "No single exclusive elemental attribution in this introductory table.",
+    "sources": [
+      "777"
+    ],
+    "version": "Hermetic / Golden Dawn-derived table; transliterations normalized",
+    "source_note": "Common Hermetic teaching convention: divine names with Atziluth, archangels with Briah, angelic orders with Yetzirah and celestial spheres with Assiah. Liber 777 labels some divine and angelic columns within Assiah instead; do not equate these world schemes without checking the edition. Spellings and some names vary."
+  },
+  {
+    "id": 10,
+    "name": "Malkuth",
+    "hebrew": "מלכות",
+    "translation": "Kingdom",
+    "planet": "Elements / Earth (not a classical planet)",
+    "pillar": "Middle",
+    "divine_name": "Adonai ha-Aretz",
+    "archangel": "Sandalphon",
+    "angelic_order": "Ashim",
+    "traditional": "Manifestation and the field in which the elemental forces are expressed.",
+    "basic": "Ask what has become concrete and what new cycle its completion permits.",
+    "position": [
+      300,
+      815
+    ],
+    "minor_number": 10,
+    "worlds": "Each Sephirah is considered in all four worlds: Atziluth, Briah, Yetzirah and Assiah. Do not identify a Sephirah with only one world.",
+    "element": "Malkuth receives the four elements.",
+    "sources": [
+      "777"
+    ],
+    "version": "Hermetic / Golden Dawn-derived table; transliterations normalized",
+    "source_note": "Common Hermetic teaching convention: divine names with Atziluth, archangels with Briah, angelic orders with Yetzirah and celestial spheres with Assiah. Liber 777 labels some divine and angelic columns within Assiah instead; do not equate these world schemes without checking the edition. Spellings and some names vary."
+  }
+]

@@ -21,6 +21,12 @@ def test_unrelated_candidate_is_rejected():
     )
 
 
+def test_corrected_name_is_not_rejected_as_off_topic():
+    assert candidate_matches_request('Alister Crawley', 'Aleister Crowley residence')
+    assert candidate_matches_request('Aleister Crowley', 'Alister Crawley residence')
+    assert not candidate_matches_request('Golden Dawn', 'Windows help')
+
+
 def test_broad_request_does_not_fail_closed():
     assert candidate_matches_request("tell me something interesting", "interesting facts")
 

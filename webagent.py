@@ -84,7 +84,6 @@ from learning.evaluator import evaluate_recent_performance
 from learning.critic import critique_recent_failures
 from learning.reflection import consolidated_lessons
 from planning.planner import is_stuck_goal
-from builder.pipeline import run_tool_generation_cycle
 from reviewers.panel import run_review_panel
 from reviewers.release_manager import summarize_reviews
 from observability.metrics import (
@@ -100,7 +99,7 @@ from core.models import (
 )
 
 from core.chat_optimization import is_direct_chat, budget_messages
-from core.topic_guard import candidate_matches_request, relevance_signals
+from core.topic_guard import candidate_matches_request, relevance_signals, filter_web_results
 
 import sys_msgs
 import agent_dialogue
@@ -868,6 +867,8 @@ def chat_response(prompt, on_chunk=None, on_status=None, on_sources=None):
 
 def _chat_response_impl(prompt, on_chunk, on_sources=None):
     stop_tts()
+    if prompt.split(maxsplit=1)[0].lower() == "/lecture":
+        return _lecture_response(prompt, on_chunk, on_sources)
     processed_prompt = process_search_tags(prompt)
     research_prompt = _research_prompt_for_followup(processed_prompt)
 
@@ -1116,15 +1117,19 @@ def search_web(query):
     """Web search with intelligent fallback to SearxNG or offline context."""
     print(f"{Fore.CYAN}🧠 Performing web search for: {query}{Style.RESET_ALL}")
     _emit_status(f"Searching the web: {query}")
-    results = search_searx(query)
+    raw_results = search_searx(query) or []
+    results = filter_web_results(query, raw_results)
     live_result_count = len(results or [])
     if results:
         results = [dict(result, search_provider="searxng") for result in results]
     else:
-        print(f"{Fore.YELLOW}ℹ️ Web search sources unavailable or returned no results. Using offline fallback.{Style.RESET_ALL}")
+        reason = (f"Web search returned {len(raw_results)} results, but none passed the topic relevance filter."
+                  if raw_results else "Web search sources unavailable or returned no results.")
+        print(f"{Fore.YELLOW}ℹ️ {reason} Using offline fallback.{Style.RESET_ALL}")
         results = search_fallback(query)
     events.publish(SEARCH_COMPLETED, query=query, result_count=len(results),
-                   live_result_count=live_result_count)
+                   live_result_count=live_result_count, raw_result_count=len(raw_results),
+                   filtered_result_count=len(raw_results) - live_result_count)
     return results
 
 
@@ -1397,7 +1402,11 @@ def _resolve_correction_entity(prompt):
     resolver_prompt = (
         "Rewrite the text below as a short, correctly-spelled, complete web search query. "
         "Use the conversation to fix any typo, fill in an omitted subject, or expand a partial "
-        "name/title into its full form. Respond with ONLY the rewritten query text on a single "
+        "name/title into its full form. Resolve pronouns such as 'they' from the conversation. "
+        "Keep the latest request's distinctive details and remove conversational filler such as "
+        "'double check'. Treat earlier assistant claims as unverified; do not invent a name or "
+        "assume the claim is true. If the subject is unknown, search its descriptive clues. "
+        "Respond with ONLY the rewritten query text on a single "
         "line - no labels, no explanation, no quotation marks, no markdown.\n\n"
         f"Conversation:\n{_planner_history()}\n\nText to rewrite: {prompt}"
     )
@@ -1436,8 +1445,11 @@ def _first_clean_line(raw):
 
 
 def _fallback_research_query(prompt, evidence):
-    """Use the user's wording if a model fails to emit a usable planner action."""
+    """Rewrite the request with context; retain raw wording only if rewriting fails."""
     query = prompt.strip().strip("@")
+    resolved = _resolve_correction_entity(prompt)
+    if resolved:
+        return resolved + (" official source" if evidence else "")
     # Corrections such as "no, Sinema isn't my senator" or "no, it's called
     # the reluctant messenger" usually omit or garble the actual subject.
     # Try a dedicated entity-resolution pass first; only fall further back to
@@ -1445,19 +1457,15 @@ def _fallback_research_query(prompt, evidence):
     # cruder heuristic - it can only ever recover the *previous* topic, not
     # the corrected one) if that resolution isn't available.
     if any(marker in query.casefold() for marker in _CORRECTION_MARKERS):
-        resolved = _resolve_correction_entity(prompt)
-        if resolved:
-            query = resolved
-        else:
-            for message in reversed(context.assistant_convo[:-1]):
-                if message.get("role") != "user":
-                    continue
-                candidate = message.get("content", "").strip()
-                if candidate and requires_current_web_verification(candidate) and not any(
-                    marker in candidate.casefold() for marker in _CORRECTION_MARKERS
-                ):
-                    query = candidate
-                    break
+        for message in reversed(context.assistant_convo[:-1]):
+            if message.get("role") != "user":
+                continue
+            candidate = message.get("content", "").strip()
+            if candidate and requires_current_web_verification(candidate) and not any(
+                marker in candidate.casefold() for marker in _CORRECTION_MARKERS
+            ):
+                query = candidate
+                break
     if evidence:
         query += " official source"
     return query
@@ -1791,6 +1799,10 @@ def _research_action(prompt, evidence, searches_used):
         "or {\"action\": \"answer\", \"reason\": \"...\"}. Do not search merely because web mode is enabled. "
         "For current officeholders, election or sports results, prices, schedules, news, or a user correction, "
         "you MUST search before answering.\n"
+        "For every search, write a concise standalone query rather than copying the user's message. "
+        "Resolve pronouns and omitted subjects using recent conversation, preserve the latest "
+        "request's distinctive clues, and remove conversational filler. Earlier assistant claims "
+        "are unverified: search to test them, without assuming they are true or inventing entities.\n"
         "If the user's request is correcting a name, title, or spelling from earlier in the conversation, "
         "do not just search their raw correction text verbatim - it may be a fragment or contain a typo. "
         "First resolve it, using the recent conversation and your own knowledge, to the most complete and "
@@ -2128,7 +2140,23 @@ def _query_words(query):
 
 def _search_text_matches_prompt(prompt, search_text):
     """Return whether a generated search stays connected to the user request."""
-    return candidate_matches_request(prompt, search_text)
+    # Shared task words (e.g. 'history') do not identify the requested subject.
+    subject = re.sub(r"\b(?:history|historical|origins|explain|please|some|talk|lets)\b",
+                     "", prompt, flags=re.IGNORECASE)
+    return candidate_matches_request(subject, search_text)
+
+
+def _validated_research_query(prompt, query):
+    """Do not let a planner or rewrite switch to an unrelated subject."""
+    if isinstance(query, str) and query.strip() and _search_text_matches_prompt(prompt, query):
+        return query.strip()
+    print(f"{Fore.YELLOW}ℹ️ Replacing off-topic research query {query!r} with the user's request.{Style.RESET_ALL}")
+    return prompt.strip().strip("@")
+
+
+def _relevant_research_results(prompt, query, results):
+    return [item for item in filter_web_results(query, results)
+            if _search_text_matches_prompt(prompt, f"{item.get('title', '')} {item.get('content', '')}")]
 
 
 def _is_near_duplicate_query(query, previous_queries):
@@ -3422,6 +3450,9 @@ def _select_tool_actions(prompt):
         "anything not already known, or a live.* tool alongside web.search for extra corroboration). Do "
         "not pick any tool for a question that doesn't need current, external, or previously-researched "
         "information (general knowledge, opinions, casual conversation, math).\n\n"
+        "For web.search, write a concise standalone query with the subject and relevant clues; "
+        "do not copy conversational filler or unresolved pronouns from the user's message. "
+        "If an entity is unknown, search descriptive clues without inventing its name.\n\n"
         "Use the recent conversation to resolve a follow-up that doesn't name its own subject (e.g. "
         "\"what was the last fixture?\" after a conversation about Manchester United means "
         "team=\"Manchester United\"). If you cannot tell which specific subject (team, company, place) "
@@ -3532,6 +3563,8 @@ def _execute_research_tool_action(action, query_for_record):
     """
     name = action.get("tool")
     arguments = action.get("arguments", {})
+    if name == "web.search":
+        arguments = dict(arguments, query=_validated_research_query(query_for_record, arguments.get("query")))
     try:
         result = tool_registry.execute(name, **arguments)
     except Exception as error:
@@ -3556,7 +3589,7 @@ def _execute_research_tool_action(action, query_for_record):
         print(f"{Fore.CYAN}🔍 Web search (model-selected): {arguments.get('query')}{Style.RESET_ALL}")
         _emit_status(f"Searching the web: {arguments.get('query')}")
         results = [item for item in (result or []) if not is_fallback_result(item)][:5]
-        evidence = save_web_evidence(query_for_record, results)
+        evidence = save_web_evidence(query_for_record, _relevant_research_results(query_for_record, arguments["query"], results))
     elif name == "knowledge.search":
         print(f"{Fore.CYAN}📚 Knowledge base search (model-selected): {arguments.get('topic')}{Style.RESET_ALL}")
         _emit_status("Checking the knowledge base...")
@@ -3610,6 +3643,7 @@ def model_directed_web_research(prompt):
     if context.deep_think_mode:
         plan_queries = _deep_think_research_plan(prompt) or [_fallback_research_query(prompt, evidence)]
         for query in plan_queries:
+            query = _validated_research_query(prompt, query)
             query_key = query.casefold()
             if query_key in seen_queries:
                 continue
@@ -3617,7 +3651,7 @@ def model_directed_web_research(prompt):
             print(f"{Fore.CYAN}🔍 Deep Think angle {search_number + 1}: {query}{Style.RESET_ALL}")
             _emit_status(f"Researching angle {search_number + 1}: {query}")
             results = [item for item in tool_registry.execute("web.search", query=query) if not is_fallback_result(item)][:5]
-            evidence.extend(save_web_evidence(query, results))
+            evidence.extend(save_web_evidence(query, _relevant_research_results(prompt, query, results)))
             apply_corroboration(evidence)
             search_number += 1
     else:
@@ -3644,11 +3678,6 @@ def model_directed_web_research(prompt):
         action = _research_action(prompt, evidence, search_number)
         verification_required = context.deep_think_mode or requires_current_web_verification(prompt)
         forced_continuation = False
-        if action.get("action") == "search" and verification_required and not evidence:
-            # Keep the subject anchored to the user's request. This prevents a
-            # chatty planner from searching a side remark (for example, a joke)
-            # instead of the current officeholder or result being verified.
-            action["query"] = _fallback_research_query(prompt, evidence)
         # A time-sensitive answer needs at least one source, even if the model
         # answered prematurely. If the first results have no strong source, try
         # one official-source refinement before allowing an answer.
@@ -3670,7 +3699,7 @@ def model_directed_web_research(prompt):
                 action = {"action": "search", "query": _fallback_research_query(prompt, evidence)}
         if action.get("action") != "search":
             break
-        query = action["query"].strip()
+        query = _validated_research_query(prompt, action.get("query"))
         query_key = query.casefold()
         if query_key in seen_queries:
             break
@@ -3685,7 +3714,7 @@ def model_directed_web_research(prompt):
         print(f"{Fore.CYAN}🔍 Research search {search_number + 1}: {query}{Style.RESET_ALL}")
         _emit_status(f"Searching: {query}")
         results = [item for item in tool_registry.execute("web.search", query=query) if not is_fallback_result(item)][:5]
-        evidence.extend(save_web_evidence(query, results))
+        evidence.extend(save_web_evidence(query, _relevant_research_results(prompt, query, results)))
         apply_corroboration(evidence)
         search_number += 1
     persist_evidence_updates(evidence)
@@ -6022,67 +6051,18 @@ def _historian_summary_text(stats):
     )
 
 
+def run_unsupervised_learning_task():
+    from core.unsupervised_learning import run_task
+    return run_task(core_config.project_root())
+
+
 def run_overnight_cycle():
-    from nightly import cycle_lock
-    try:
-        with cycle_lock(core_config.project_root()):
-            return _run_overnight_cycle_unlocked()
-    except BlockingIOError:
-        return "Another overnight cycle is already running."
-
-
-def _run_overnight_cycle_unlocked():
-    """Knowledge maintenance runs independently of engineering outcomes."""
-    from core.knowledge_maintenance import maintain_knowledge, atomic_json
-    run_number = _next_overnight_run_number()
-    sections, errors = [], []
-
-    def stage(label, action):
-        try:
-            output = action()
-            sections.append(f"{label}:\n{output}")
-        except Exception as error:
-            errors.append(label)
-            sections.append(f"{label}:\nERROR {type(error).__name__}: {error}")
-
-    # Build usable retrieval data even if the optional model or legacy cleanup fails.
-    stage("Knowledge consolidation", lambda: json.dumps(maintain_knowledge(core_config.project_root()), indent=2))
-    stage("Historian cleanup", lambda: _historian_summary_text(historian(dry_run=False)))
-    def research():
-        from core.autonomous_research import run_research
-        result = run_research(core_config.project_root())
-        if result.get("errors"):
-            raise RuntimeError(json.dumps(result))
-        return json.dumps(result)
-    stage("Gap-driven research", research)
-    def study():
-        from core.knowledge_maintenance import learn_from_sources
-        maintain_knowledge(core_config.project_root())
-        result = learn_from_sources(core_config.project_root())
-        if any(item.get("kind") == "execution" for item in result.get("failures", [])):
-            raise RuntimeError(json.dumps(result))
-        return json.dumps(result)
-    stage("Source-backed learning", study)
-    stage("Retrieval refresh", lambda: json.dumps(maintain_knowledge(core_config.project_root()), indent=2))
-    stage("Self-improve", lambda: run_self_improve_cycle()[1])
-    stage("Tool generation", lambda: run_tool_generation_cycle(
-        _selfimprove_coding_chat, _selfimprove_root(),
-        [(tool.name, tool.description) for tool in tool_registry.list()], agent="self-improve"))
-    stage("Learning reflection", lambda: json.dumps(consolidated_lessons(), ensure_ascii=False))
-    report = (f"☀️ GOOD MORNING — Overnight Learning Run #{run_number}\n\n"
-              + "\n\n".join(sections)
-              + "\n\nStatus: " + ("partial failure: " + ", ".join(errors) if errors else "completed")
-              + "\nKnowledge is consolidated for retrieval; model weights are unchanged. "
-                "Review code changes and tool proposals before using them. "
-                "To chat, relaunch `python3 webagent.py`.\n")
-    _write_overnight_report(run_number, report)
-    atomic_json(os.path.join(core_config.project_root(), "knowledge_state", "overnight_status.json"),
-                {"finished_at": datetime.now().isoformat(), "errors": errors, "run": run_number})
-    return report
+    """Compatibility for existing saved cron entries."""
+    return run_unsupervised_learning_task()
 
 
 def perform_overnight_cycle():
-    print(f"{Fore.CYAN}🌙 Starting the overnight learning cycle...{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}🌙 Starting an unsupervised learning task...{Style.RESET_ALL}")
     report = run_overnight_cycle()
     print(f"{Fore.GREEN}{report}{Style.RESET_ALL}")
 
@@ -6258,7 +6238,7 @@ def _historian_ensure_bucket_dir(path):
     return candidate
 
 
-def historian_clean_knowledge_base(dry_run=False):
+def historian_clean_knowledge_base(dry_run=False, knowledge_root=None):
     """Dedupe and topic-sort the flat knowledge_base dump, and dedupe stale web_evidence captures.
 
     Only files sitting directly in knowledge_base/ get sorted into a topic
@@ -6266,7 +6246,7 @@ def historian_clean_knowledge_base(dry_run=False):
     cheap and idempotent. Exact-duplicate content anywhere in the tree
     (including already-sorted files) is deduped by hash, keeping the oldest.
     """
-    kb_path = os.path.join(core_config.project_root(), "knowledge_base")
+    kb_path = str(knowledge_root) if knowledge_root is not None else os.path.join(core_config.project_root(), "knowledge_base")
     stats = {"duplicates_removed": 0, "files_sorted": 0, "buckets": {}, "web_evidence_duplicates_removed": 0}
     if not os.path.isdir(kb_path):
         return stats
@@ -6542,7 +6522,7 @@ def historian_clean_agent_memory(dry_run=False):
     return stats
 
 
-def historian(dry_run=False):
+def historian(dry_run=False, knowledge_root=None):
     """Clean, categorize, and consolidate everything the assistant has stored.
 
     Three passes: dedupe/topic-sort knowledge_base, merge saved conversation
@@ -6551,6 +6531,9 @@ def historian(dry_run=False):
     changing anything on disk - the terminal command exposes this as
     "/historian preview".
     """
+    if knowledge_root is not None:
+        return historian_clean_knowledge_base(dry_run=dry_run, knowledge_root=knowledge_root)
+
     running_label = "Historian preview run" if dry_run else "Historian run"
     print(f"{Fore.CYAN}{running_label} starting - this can take a while if it needs to classify a lot of "
           f"unsorted content.{Style.RESET_ALL}")
@@ -7147,7 +7130,7 @@ def _execute_cron_task(task):
             return run_self_improve_cycle()
         if action_type == "feature" and action_payload == "overnight":
             report = run_overnight_cycle()
-            return "Status: partial failure:" not in report, report
+            return not bool(report.get("research", {}).get("errors")), json.dumps(report, indent=2)
         return False, f"Unknown action: {action_type}:{action_payload}"
     except Exception as error:
         return False, f"{type(error).__name__}: {error}"
@@ -7901,6 +7884,88 @@ def _cmd_askwiki(prompt):
     ask_wiki(wiki_query)
 
 
+def _lecture_response(prompt, on_chunk=None, on_sources=None):
+    from core.lecture import create_lecture
+
+    parts = prompt.split(maxsplit=1)
+    if len(parts) < 2:
+        message = "Usage: /lecture <topic> — optionally include your preferred level or focus."
+        if on_chunk:
+            on_chunk(message)
+        return message
+    topic = parts[1].strip()
+    # Only user wording is trusted for disambiguation; earlier generated claims
+    # may be precisely the misinformation this lecture needs to correct.
+    topic_context = ""
+    for message in reversed(context.assistant_convo):
+        if message.get("role") == "user" and not message.get("content", "").startswith("/"):
+            candidate = message.get("content", "")
+            if topic.casefold() in candidate.casefold():
+                topic_context = candidate[-2000:]
+            break
+    chosen_model = _selected_model()
+
+    def plan(instruction):
+        def chat(messages):
+            return model_chat(model=chosen_model, messages=messages).get("message", {}).get("content", "")
+        return agent_dialogue.call_agent_json(chat, instruction, max_clarify_rounds=0)
+
+    def search(query):
+        try:
+            results = tool_registry.execute("web.search", query=query)
+            results = filter_web_results(topic, filter_web_results(query, results))
+            return save_web_evidence(query, [r for r in results if not is_fallback_result(r)][:4])
+        except ChatCancelled:
+            raise
+        except Exception as error:
+            _emit_status(f"Lecture search unavailable: {error}")
+            return []
+
+    def stream(messages):
+        chunks = model_chat(model=chosen_model, messages=messages, stream=True,
+                            **thinking_options(chosen_model, context.reasoning_mode))
+        try:
+            for chunk in chunks:
+                yield chunk.get("message", {}).get("content", "")
+        finally:
+            close = getattr(chunks, "close", None)
+            if close:
+                close()
+
+    context.assistant_convo.append({"role": "user", "content": prompt})
+    displayed = []
+
+    def emit(text):
+        displayed.append(text)
+        if on_chunk:
+            on_chunk(text)
+
+    try:
+        response, evidence, path = create_lecture(
+            topic, plan=plan, search=search, stream=stream, topic_context=topic_context,
+            output_dir=os.path.join(core_config.project_root(), "lectures"),
+            on_chunk=emit, on_status=_emit_status,
+        )
+    except BaseException:
+        if displayed:
+            context.assistant_convo.append({"role": "assistant", "content": "".join(displayed), "interrupted": True})
+        raise
+    context.assistant_convo.append({"role": "assistant", "content": response})
+    if on_sources:
+        on_sources(evidence)
+    return response
+
+
+def _cmd_lecture(prompt):
+    previous_callback = context.status_callback
+    context.status_callback = lambda message: print(f"\n{message}", flush=True)
+    try:
+        _lecture_response(prompt, on_chunk=lambda text: print(text, end="", flush=True))
+        print()
+    finally:
+        context.status_callback = previous_callback
+
+
 def _cmd_tutor(prompt):
     parts = prompt.split(maxsplit=1)
     if len(parts) < 2:
@@ -8014,21 +8079,6 @@ def _cmd_learning(prompt):
             print(f"  - {lesson}{suffix}")
 
 
-def _cmd_generate(prompt):
-    """Phase 9's tool-generation pipeline, on demand: looks at Phase 6's
-    critic findings for a real, recurring capability gap and, if one
-    exists, designs, generates, and sandboxes-tests a new Skill to address
-    it. Always just a proposal under gnosis_workspace/proposals/ for human
-    review - never registers anything automatically, no matter the
-    outcome."""
-    print(f"{Fore.CYAN}🔧 Looking for a capability gap to generate a tool for...{Style.RESET_ALL}")
-    available_tools = [(tool.name, tool.description) for tool in tool_registry.list()]
-    report = run_tool_generation_cycle(
-        _selfimprove_coding_chat, _selfimprove_root(), available_tools, agent="self-improve",
-    )
-    print(f"{Fore.GREEN}{report}{Style.RESET_ALL}")
-
-
 def _cmd_report(prompt):
     """Phase 13's observability report: real metrics computed over what
     Phase 5/6/12 already record, not a browser dashboard - see
@@ -8132,14 +8182,14 @@ def _cmd_help(prompt):
     print("/showpath [topic] - Show the learning path for the given topic")
     print("/tarot - Perform a single-deck Tree of Life Tarot reading")
     print("/tutor [topic] - Create a learning path for the given topic")
+    print("/lecture <topic> - Research and write a detailed six-section lecture; save to lectures/")
     print("/tts - Toggle TTS mode (read responses aloud)")
     print("/unfiltered - Toggle unfiltered mode (r1-1776:70b)")
     print("/selfimprove - Propose, apply, test, and validate one small repo fix (reverts on failure, never auto-commits)")
     print("/selfimprove preview (or --dry-run) - Same as above, but never touches the live repo - reports the verified diff instead")
     print("/learning - Report recent self-improve success rate, failure patterns, and lessons learned")
-    print("/generate - Design, generate, and sandbox-test a new tool for a recurring capability gap (proposal only, never auto-registered)")
     print("/report - Observability report: task completion, search quality, tool usage, self-improve/tool-generation performance")
-    print("/overnight - Run the overnight learning cycle now (self-improve + tool generation + a combined report) - same as the nightly cron trigger")
+    print("/unsupervised - Run one unsupervised research task (continuous toggle is in Self-Improve)")
     print("/voice - Toggle voice mode (for live input)")
     print("/websearch - Toggle web search (ON by default; the model decides per message whether to search)")
     print("/ytdl <url> - Download YouTube video in highest quality to ~/Downloads")
@@ -8254,6 +8304,8 @@ def _build_command_router():
     router.register_prefix("/cron run", _cmd_cron_run)
     router.register_prefix("/askwiki", _cmd_askwiki)
     router.register_prefix("/tutor", _cmd_tutor)
+    router.register("/lecture", _cmd_lecture)
+    router.register_prefix("/lecture ", _cmd_lecture)
     router.register_prefix("/showpath", _cmd_showpath)
     router.register_prefix("/delpath", _cmd_delpath)
     router.register_prefix("/news", _cmd_news)
@@ -8262,8 +8314,8 @@ def _build_command_router():
     router.register_prefix("/persona", _cmd_persona)
     router.register(("/selfimprove", "/selfimprove preview", "/selfimprove --dry-run"), _cmd_selfimprove)
     router.register("/learning", _cmd_learning)
-    router.register("/generate", _cmd_generate)
     router.register("/report", _cmd_report)
+    router.register("/unsupervised", _cmd_overnight)
     router.register("/overnight", _cmd_overnight)
     router.register("/help", _cmd_help)
     router.register("/exit", _cmd_exit)

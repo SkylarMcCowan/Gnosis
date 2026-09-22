@@ -1,0 +1,376 @@
+[
+  {
+    "id": 11,
+    "hebrew": "א",
+    "letter": "Aleph",
+    "endpoints": [
+      1,
+      2
+    ],
+    "major_id": "major-11",
+    "astrology": "Air",
+    "element": "Air",
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 12,
+    "hebrew": "ב",
+    "letter": "Beth",
+    "endpoints": [
+      1,
+      3
+    ],
+    "major_id": "major-12",
+    "astrology": "Mercury",
+    "element": null,
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 13,
+    "hebrew": "ג",
+    "letter": "Gimel",
+    "endpoints": [
+      1,
+      6
+    ],
+    "major_id": "major-13",
+    "astrology": "Moon",
+    "element": null,
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 14,
+    "hebrew": "ד",
+    "letter": "Daleth",
+    "endpoints": [
+      2,
+      3
+    ],
+    "major_id": "major-14",
+    "astrology": "Venus",
+    "element": null,
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 15,
+    "hebrew": "ה",
+    "letter": "Heh",
+    "endpoints": [
+      2,
+      6
+    ],
+    "major_id": "major-15",
+    "astrology": "Aries",
+    "element": null,
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 16,
+    "hebrew": "ו",
+    "letter": "Vau",
+    "endpoints": [
+      2,
+      4
+    ],
+    "major_id": "major-16",
+    "astrology": "Taurus",
+    "element": null,
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 17,
+    "hebrew": "ז",
+    "letter": "Zayin",
+    "endpoints": [
+      3,
+      6
+    ],
+    "major_id": "major-17",
+    "astrology": "Gemini",
+    "element": null,
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 18,
+    "hebrew": "ח",
+    "letter": "Cheth",
+    "endpoints": [
+      3,
+      5
+    ],
+    "major_id": "major-18",
+    "astrology": "Cancer",
+    "element": null,
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 19,
+    "hebrew": "ט",
+    "letter": "Teth",
+    "endpoints": [
+      4,
+      5
+    ],
+    "major_id": "major-19",
+    "astrology": "Leo",
+    "element": null,
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 20,
+    "hebrew": "י",
+    "letter": "Yod",
+    "endpoints": [
+      4,
+      6
+    ],
+    "major_id": "major-20",
+    "astrology": "Virgo",
+    "element": null,
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 21,
+    "hebrew": "כ",
+    "letter": "Kaph",
+    "endpoints": [
+      4,
+      7
+    ],
+    "major_id": "major-21",
+    "astrology": "Jupiter",
+    "element": null,
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 22,
+    "hebrew": "ל",
+    "letter": "Lamed",
+    "endpoints": [
+      5,
+      6
+    ],
+    "major_id": "major-22",
+    "astrology": "Libra",
+    "element": null,
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 23,
+    "hebrew": "מ",
+    "letter": "Mem",
+    "endpoints": [
+      5,
+      8
+    ],
+    "major_id": "major-23",
+    "astrology": "Water",
+    "element": "Water",
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 24,
+    "hebrew": "נ",
+    "letter": "Nun",
+    "endpoints": [
+      6,
+      7
+    ],
+    "major_id": "major-24",
+    "astrology": "Scorpio",
+    "element": null,
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 25,
+    "hebrew": "ס",
+    "letter": "Samekh",
+    "endpoints": [
+      6,
+      9
+    ],
+    "major_id": "major-25",
+    "astrology": "Sagittarius",
+    "element": null,
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 26,
+    "hebrew": "ע",
+    "letter": "Ayin",
+    "endpoints": [
+      6,
+      8
+    ],
+    "major_id": "major-26",
+    "astrology": "Capricorn",
+    "element": null,
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 27,
+    "hebrew": "פ",
+    "letter": "Peh",
+    "endpoints": [
+      7,
+      8
+    ],
+    "major_id": "major-27",
+    "astrology": "Mars",
+    "element": null,
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 28,
+    "hebrew": "צ",
+    "letter": "Tzaddi",
+    "endpoints": [
+      7,
+      9
+    ],
+    "major_id": "major-28",
+    "astrology": "Aquarius",
+    "element": null,
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 29,
+    "hebrew": "ק",
+    "letter": "Qoph",
+    "endpoints": [
+      7,
+      10
+    ],
+    "major_id": "major-29",
+    "astrology": "Pisces",
+    "element": null,
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 30,
+    "hebrew": "ר",
+    "letter": "Resh",
+    "endpoints": [
+      8,
+      9
+    ],
+    "major_id": "major-30",
+    "astrology": "Sun",
+    "element": null,
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 31,
+    "hebrew": "ש",
+    "letter": "Shin",
+    "endpoints": [
+      8,
+      10
+    ],
+    "major_id": "major-31",
+    "astrology": "Fire / Spirit",
+    "element": "Fire",
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  },
+  {
+    "id": 32,
+    "hebrew": "ת",
+    "letter": "Tav",
+    "endpoints": [
+      9,
+      10
+    ],
+    "major_id": "major-32",
+    "astrology": "Saturn / Earth",
+    "element": "Earth",
+    "sources": [
+      "777",
+      "book-t"
+    ],
+    "version": "Conventional Golden Dawn letter-path arrangement"
+  }
+]

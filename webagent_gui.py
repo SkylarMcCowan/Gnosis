@@ -74,6 +74,8 @@ from hacker import HackerWidget
 from ethereal_dnd_widget import EtherealDndWidget
 from penpot_studio import PenpotStudioWidget
 from converter import ConverterWidget
+from hermetic_study.widget import HermeticStudyWidget
+from paranormal.ui.widget import ParanormalLabWidget
 from core import subscriptions
 from core import sports as core_sports
 from core.activity_log import load_activity, clear_activity
@@ -686,6 +688,18 @@ class WebAgentGUI(QMainWindow):
         can be up to 15-30s stale - explicitly flushing each one's
         save_now() here means closing the app (or restarting it) never
         loses whatever progress happened since the last autosave tick."""
+        if not self.paranormal_lab_widget.shutdown():
+            event.ignore()
+            QTimer.singleShot(100, self.close)
+            return
+        self._learning.shutdown()
+        self._learning.tick()
+        if self._learning.pending:
+            self.learning_status.setText("Finishing research before closing…")
+            event.ignore()
+            QTimer.singleShot(1000, self.close)
+            return
+        self.learning_timer.stop()
         self._close_requested = True
         self.background_timer.stop()
         self._daytime.shutdown()
@@ -793,10 +807,10 @@ class WebAgentGUI(QMainWindow):
         self.nav_list.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.nav_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         for label in (
-            "💬  Chat", "🔄  Self-Improve", "📊  Report", "📦  Proposals", "🧠  Knowledge",
+            "💬  Chat", "🔄  Self-Improve", "📊  Report", "🧠  Knowledge",
             "🔔  Subscriptions", "🎮  Games", "🗂️  Work Tracker", "🌦️  Weather Station", "📈  Stocks Tracker", "📻  Radio",
             "📝  LinkedIn/Blog", "🕵️  Hacker", "🏕️  Cozy World", "🐉  Ethereal DND", "🎨  Penpot Studio",
-            "🔁  Converter",
+            "🔁  Converter", "☉  Tarot Study", "◉  Investigation Lab",
         ):
             self.nav_list.addItem(label)
         root_layout.addWidget(self.nav_list)
@@ -807,7 +821,6 @@ class WebAgentGUI(QMainWindow):
         self.pages.addWidget(self._build_chat_page())
         self.pages.addWidget(self._build_selfimprove_page())
         self.pages.addWidget(self._build_report_page())
-        self.pages.addWidget(self._build_proposals_page())
         self.pages.addWidget(self._build_knowledge_page())
         self.pages.addWidget(self._build_subscriptions_page())
         self.pages.addWidget(self._build_games_page())
@@ -831,6 +844,10 @@ class WebAgentGUI(QMainWindow):
         self.pages.addWidget(self.penpot_studio_widget)
         self.converter_widget = ConverterWidget()
         self.pages.addWidget(self.converter_widget)
+        self.hermetic_study_widget = HermeticStudyWidget()
+        self.pages.addWidget(self.hermetic_study_widget)
+        self.paranormal_lab_widget = ParanormalLabWidget()
+        self.pages.addWidget(self.paranormal_lab_widget)
 
         self.nav_list.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.nav_list.currentRowChanged.connect(self._on_page_changed)
@@ -1048,7 +1065,7 @@ class WebAgentGUI(QMainWindow):
         self._source_inspections = {}
         self.chat_display.document().setDocumentMargin(16)
         self.interest_dashboard = SubscriptionDashboard()
-        self.interest_dashboard.manage_requested.connect(lambda: self.nav_list.setCurrentRow(5))
+        self.interest_dashboard.manage_requested.connect(lambda: self.nav_list.setCurrentRow(4))
         self.interest_dashboard.prompt_requested.connect(self._draft_interest_question)
         self.interest_dashboard.refresh_requested.connect(self._refresh_interest_updates)
         self.chat_surfaces = QStackedWidget()
@@ -1126,48 +1143,35 @@ class WebAgentGUI(QMainWindow):
         return central_wrapper
 
     def _build_selfimprove_page(self):
-        """Self-Improve & Overnight control - the GUI equivalent of typing
-        /selfimprove, /selfimprove preview, /generate, or /overnight, since
-        none of those commands were ever reachable from here before. Each
-        button runs the same real function the CLI command calls, off the
-        GUI thread (CycleWorker), and shows the same report text a terminal
-        user would see. A direct button click is the same kind of attended,
-        human-initiated action a typed command is - no extra confirmation
-        dialog, matching Phase 15's "typing the command is the approval"
-        stance."""
+        """Code improvement and continuous, drainable research controls."""
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(10)
 
-        layout.addWidget(self._section_title("🔄 Self-Improve & Overnight"))
+        layout.addWidget(self._section_title("🔄 Self-Improve & Unsupervised Learning"))
         layout.addWidget(self._muted_label(
-            "Runs the real autonomous pipelines against this actual project. "
-            "Preview is safe to run anytime; the others can write files or run "
-            "tests for real."
+            "Let Gnosis explore novel topics in waves of four research tasks and save sourced findings. "
+            "Wikipedia is preferred. Historian runs after each wave. Switch off to finish the current wave."
         ))
 
         button_row = QHBoxLayout()
-        self.si_preview_button = QPushButton("👁  Preview (dry run)")
         self.si_run_button = QPushButton("🚀  Run /selfimprove")
-        self.si_generate_button = QPushButton("🔧  Generate skill")
-        self.si_overnight_button = QPushButton("🌙  Run overnight cycle")
-        for button in (self.si_preview_button, self.si_run_button, self.si_generate_button, self.si_overnight_button):
-            button_row.addWidget(button)
+        self.si_learning_button = QPushButton("Unsupervised learning: off")
+        self.si_learning_button.setCheckable(True)
+        button_row.addWidget(self.si_run_button)
+        button_row.addWidget(self.si_learning_button)
         layout.addLayout(button_row)
-
-        self.si_preview_button.clicked.connect(lambda: self._run_cycle(
-            "Preview", lambda: webagent.run_self_improve_cycle(dry_run=True)))
         self.si_run_button.clicked.connect(lambda: self._run_cycle(
             "/selfimprove", lambda: webagent.run_self_improve_cycle(dry_run=False)))
-        self.si_generate_button.clicked.connect(lambda: self._run_cycle(
-            "Generate", lambda: webagent.run_tool_generation_cycle(
-                webagent._selfimprove_coding_chat, webagent._selfimprove_root(),
-                [(t.name, t.description) for t in webagent.tool_registry.list()],
-                agent="self-improve",
-            )))
-        self.si_overnight_button.clicked.connect(lambda: self._run_cycle(
-            "Overnight", webagent.run_overnight_cycle))
+        from core.unsupervised_learning import UnsupervisedLearning
+        self._learning = UnsupervisedLearning(core_config.project_root())
+        self.si_learning_button.toggled.connect(self._toggle_learning)
+        self.learning_status = self._muted_label("Learning is off.")
+        layout.addWidget(self.learning_status)
+        self.learning_timer = QTimer(self)
+        self.learning_timer.timeout.connect(self._tick_learning)
+        self.learning_timer.start(1000)
 
         self.si_status_label = self._muted_label("")
         layout.addWidget(self.si_status_label)
@@ -1175,20 +1179,39 @@ class WebAgentGUI(QMainWindow):
         self.si_output = QTextEdit()
         self.si_output.setObjectName("chatDisplay")
         self.si_output.setReadOnly(True)
+        self.si_output.document().setMaximumBlockCount(3000)
         self.si_output.setFontFamily("Menlo, Consolas, monospace")
         layout.addWidget(self.si_output, 1)
 
         self._si_worker = None
         return page
 
+    def _toggle_learning(self, enabled):
+        self._learning.set_enabled(enabled)
+        self._tick_learning()
+
+    def _tick_learning(self):
+        self._learning.tick()
+        active = len(self._learning.pending)
+        state = "on" if self._learning.enabled else ("finishing" if active else "off")
+        self.si_learning_button.setText(f"Unsupervised learning: {state}")
+        self.learning_status.setText(self._learning.status_text())
+        for message in self._learning.drain_messages():
+            self._append_si_output(message)
+
+    def _append_si_output(self, message):
+        cursor = self.si_output.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        cursor.insertText(str(message) + "\n")
+        self.si_output.setTextCursor(cursor)
+        self.si_output.ensureCursorVisible()
+
     def _run_cycle(self, label, fn):
-        """Shared trigger for every Self-Improve/Overnight button: disable
-        all four while one runs (they'd otherwise contend for the same
-        worktree/crontab-classified real resources), run fn() on a
-        CycleWorker, and render whatever it returns."""
-        for button in (self.si_preview_button, self.si_run_button, self.si_generate_button, self.si_overnight_button):
+        """Run a code improvement off the GUI thread."""
+        for button in (self.si_run_button,):
             button.setEnabled(False)
         self.si_status_label.setText(f"Running {label}...")
+        self._append_si_output(f"Running {label}...")
 
         self._si_worker = CycleWorker(fn)
         self._si_worker.result_ready.connect(lambda result: self._on_cycle_result(label, result))
@@ -1202,16 +1225,16 @@ class WebAgentGUI(QMainWindow):
         else:
             report = result
             self.si_status_label.setText(f"{label}: done")
-        self.si_output.setPlainText(str(report))
+        self._append_si_output(f"{label}:\n{report}")
         self._reset_cycle_buttons()
 
     def _on_cycle_error(self, message):
         self.si_status_label.setText("Failed")
-        self.si_output.setPlainText(message)
+        self._append_si_output(f"Self-improve failed: {message}")
         self._reset_cycle_buttons()
 
     def _reset_cycle_buttons(self):
-        for button in (self.si_preview_button, self.si_run_button, self.si_generate_button, self.si_overnight_button):
+        for button in (self.si_run_button,):
             button.setEnabled(True)
 
     def _build_report_page(self):
@@ -1304,67 +1327,6 @@ class WebAgentGUI(QMainWindow):
                     lines.append(f"  - {lesson}{suffix}")
 
         self.report_output.setPlainText("\n".join(lines).strip())
-
-    def _build_proposals_page(self):
-        """Browses gnosis_workspace/proposals/ - Phase 9's generated-skill
-        proposals, each already carrying Phase 11's reviewer-panel findings
-        in its own report.md. Nothing here registers a proposal; this is
-        read-only, the same "a human reads it first" stance every proposal
-        has had since Phase 9."""
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(15, 15, 15, 15)
-        layout.setSpacing(10)
-
-        header_row = QHBoxLayout()
-        header_row.addWidget(self._section_title("📦 Generated Skill Proposals"))
-        header_row.addStretch()
-        refresh_button = QPushButton("🔄 Refresh")
-        refresh_button.clicked.connect(self._refresh_proposals)
-        header_row.addWidget(refresh_button)
-        layout.addLayout(header_row)
-
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.proposals_list = QListWidget()
-        self.proposals_list.setMaximumWidth(260)
-        self.proposals_list.itemClicked.connect(self._load_proposal)
-        splitter.addWidget(self.proposals_list)
-
-        self.proposals_detail = QTextEdit()
-        self.proposals_detail.setObjectName("chatDisplay")
-        self.proposals_detail.setReadOnly(True)
-        splitter.addWidget(self.proposals_detail)
-        splitter.setStretchFactor(1, 1)
-        layout.addWidget(splitter, 1)
-
-        self._refresh_proposals()
-        return page
-
-    def _refresh_proposals(self):
-        self.proposals_list.clear()
-        proposals_dir = core_config.path("gnosis_workspace", "proposals")
-        if not os.path.isdir(proposals_dir):
-            self.proposals_detail.setPlainText("No proposals yet - run Generate on the Self-Improve page.")
-            return
-        for proposal_id in sorted(os.listdir(proposals_dir), reverse=True):
-            if os.path.isdir(os.path.join(proposals_dir, proposal_id)):
-                self.proposals_list.addItem(proposal_id)
-
-    def _load_proposal(self, item):
-        proposals_dir = core_config.path("gnosis_workspace", "proposals")
-        proposal_dir = os.path.join(proposals_dir, item.text())
-        parts = []
-        report_path = os.path.join(proposal_dir, "report.md")
-        if os.path.isfile(report_path):
-            with open(report_path, "r", encoding="utf-8") as f:
-                parts.append(f.read())
-        for filename in sorted(os.listdir(proposal_dir)):
-            file_path = os.path.join(proposal_dir, filename)
-            if filename == "report.md" or not os.path.isfile(file_path):
-                continue
-            with open(file_path, "r", encoding="utf-8") as f:
-                parts.append(f"\n\n--- {filename} ---\n{f.read()}")
-        self.proposals_detail.setPlainText("\n".join(parts))
 
     def _build_knowledge_page(self):
         """Browses the three flat on-disk stores that used to only be

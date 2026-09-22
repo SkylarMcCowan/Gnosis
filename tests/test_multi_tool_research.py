@@ -227,10 +227,10 @@ class TestExecuteResearchToolAction:
         assert result == []
 
     def test_web_search_results_get_saved_as_evidence(self, isolated_data_dir, monkeypatch):
-        fake_result = {"title": "A page", "url": "https://example.com/a", "content": "Real background content here."}
+        fake_result = {"title": "Test query", "url": "https://example.com/a", "content": "Real background content here."}
         monkeypatch.setattr(webagent.tool_registry, "execute", lambda name, **kwargs: [fake_result])
         result = webagent._execute_research_tool_action(
-            {"tool": "web.search", "arguments": {"query": "test query"}}, "what's the topic?",
+            {"tool": "web.search", "arguments": {"query": "test query"}}, "explain the test query",
         )
         assert len(result) == 1
         assert result[0]["url"] == "https://example.com/a"

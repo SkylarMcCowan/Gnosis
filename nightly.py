@@ -18,7 +18,7 @@ from core.knowledge_maintenance import atomic_json, read_json
 ROOT = Path(__file__).resolve().parent
 LABEL = 'com.gnosis.nightly'
 STAGES = [('knowledge', 600), ('historian', 1200), ('research', 600), ('study', 600),
-          ('index', 600), ('selfimprove', 900), ('tools', 600)]
+          ('index', 600), ('selfimprove', 900)]
 
 
 @contextmanager
@@ -82,11 +82,6 @@ def run_stage(name, root=ROOT):
         report = webagent.run_self_improve_cycle()[1]
         return {'outcome': 'skipped' if 'Skipped:' in report or 'No change made:' in report else 'completed',
                 'report': report}
-    if name == 'tools':
-        report = webagent.run_tool_generation_cycle(
-            webagent._selfimprove_coding_chat, str(root),
-            [(tool.name, tool.description) for tool in webagent.tool_registry.list()], agent='self-improve')
-        return {'outcome': 'skipped' if report.startswith('No recurring') else 'completed', 'report': report}
     raise ValueError(name)
 
 

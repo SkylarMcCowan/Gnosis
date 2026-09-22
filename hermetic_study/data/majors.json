@@ -1,0 +1,420 @@
+[
+  {
+    "id": "major-11",
+    "kind": "major",
+    "name": "The Fool",
+    "thoth_name": "The Fool",
+    "gd_number": "0",
+    "thoth_number": "0",
+    "path": 11,
+    "thoth_letter": "Aleph",
+    "theme": "Unconditioned beginning",
+    "prompt": "Consider what precedes a defined intention.",
+    "imagery": "A leaping figure amid spirals, a tiger and animal forms.",
+    "difference": "The Thoth title and imagery are Crowley/Harris’s later presentation; the GD letter attribution is retained.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-12",
+    "kind": "major",
+    "name": "The Magician",
+    "thoth_name": "The Magus",
+    "gd_number": "I",
+    "thoth_number": "I",
+    "path": 12,
+    "thoth_letter": "Beth",
+    "theme": "Skill and articulation",
+    "prompt": "Consider the act of giving potential a communicable form.",
+    "imagery": "A mercurial figure with the implements of magical work.",
+    "difference": "The Thoth title and imagery are Crowley/Harris’s later presentation; the GD letter attribution is retained.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-13",
+    "kind": "major",
+    "name": "The High Priestess",
+    "thoth_name": "The Priestess",
+    "gd_number": "II",
+    "thoth_number": "II",
+    "path": 13,
+    "thoth_letter": "Gimel",
+    "theme": "Receptive knowledge",
+    "prompt": "Consider a mediating image between an unseen source and a visible center.",
+    "imagery": "A veiled lunar figure and a bow.",
+    "difference": "The Thoth title and imagery are Crowley/Harris’s later presentation; the GD letter attribution is retained.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-14",
+    "kind": "major",
+    "name": "The Empress",
+    "thoth_name": "The Empress",
+    "gd_number": "III",
+    "thoth_number": "III",
+    "path": 14,
+    "thoth_letter": "Daleth",
+    "theme": "Fertility and attraction",
+    "prompt": "Consider attraction joining dynamic force with formative containment.",
+    "imagery": "A crowned figure, lotus, pelican and eagle.",
+    "difference": "The Thoth title and imagery are Crowley/Harris’s later presentation; the GD letter attribution is retained.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-15",
+    "kind": "major",
+    "name": "The Emperor",
+    "thoth_name": "The Emperor",
+    "gd_number": "IV",
+    "thoth_number": "IV",
+    "path": 15,
+    "thoth_letter": "Tzaddi",
+    "theme": "Authority and initiative",
+    "prompt": "Consider how initiating force becomes an organizing center.",
+    "imagery": "A ram-associated ruler and heraldic emblems.",
+    "difference": "Crowley assigns Tzaddi to the Emperor. His card essay retains Aries. This panel keeps the GD Tree (Heh, Path 15); it does not infer a new set of Thoth endpoints from the letter exchange. Consult the card essays and compare the appendix tables: their reconciliation is disputed.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-16",
+    "kind": "major",
+    "name": "The Hierophant",
+    "thoth_name": "The Hierophant",
+    "gd_number": "V",
+    "thoth_number": "V",
+    "path": 16,
+    "thoth_letter": "Vau",
+    "theme": "Transmission of tradition",
+    "prompt": "Consider how living force takes a durable institutional form.",
+    "imagery": "A teacher, bull symbolism and a pentagram containing a child.",
+    "difference": "The Thoth title and imagery are Crowley/Harris’s later presentation; the GD letter attribution is retained.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-17",
+    "kind": "major",
+    "name": "The Lovers",
+    "thoth_name": "The Lovers",
+    "gd_number": "VI",
+    "thoth_number": "VI",
+    "path": 17,
+    "thoth_letter": "Zayin",
+    "theme": "Discrimination and union",
+    "prompt": "Consider the distinction of complementary terms before their reconciliation.",
+    "imagery": "An alchemical marriage with paired figures.",
+    "difference": "The Thoth title and imagery are Crowley/Harris’s later presentation; the GD letter attribution is retained.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-18",
+    "kind": "major",
+    "name": "The Chariot",
+    "thoth_name": "The Chariot",
+    "gd_number": "VII",
+    "thoth_number": "VII",
+    "path": 18,
+    "thoth_letter": "Cheth",
+    "theme": "Contained directed force",
+    "prompt": "Consider the vessel that allows force to move without dispersing.",
+    "imagery": "An armored bearer of the Grail in a chariot.",
+    "difference": "The Thoth title and imagery are Crowley/Harris’s later presentation; the GD letter attribution is retained.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-19",
+    "kind": "major",
+    "name": "Strength / Fortitude",
+    "thoth_name": "Lust",
+    "gd_number": "VIII*",
+    "thoth_number": "XI",
+    "path": 19,
+    "thoth_letter": "Teth",
+    "theme": "Courage and vital power",
+    "prompt": "Consider vitality held between expansive order and corrective severity.",
+    "imagery": "Babalon rides the Beast holding a cup.",
+    "difference": "Thoth XI Lust develops the symbolism of Babalon and the Beast. Teth and Leo remain. GD-related publications vary in Strength/Justice numbering; compare letters, not just numerals.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-20",
+    "kind": "major",
+    "name": "The Hermit",
+    "thoth_name": "The Hermit",
+    "gd_number": "IX",
+    "thoth_number": "IX",
+    "path": 20,
+    "thoth_letter": "Yod",
+    "theme": "Prudence and inward guidance",
+    "prompt": "Consider the careful cultivation of an ordering principle.",
+    "imagery": "A lamp, staff and spermatozoon symbolism.",
+    "difference": "The Thoth title and imagery are Crowley/Harris’s later presentation; the GD letter attribution is retained.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-21",
+    "kind": "major",
+    "name": "The Wheel of Fortune",
+    "thoth_name": "Fortune",
+    "gd_number": "X",
+    "thoth_number": "X",
+    "path": 21,
+    "thoth_letter": "Kaph",
+    "theme": "Cycles and change",
+    "prompt": "Consider expansion as movement through changing conditions.",
+    "imagery": "A wheel with three figures expressing changing forces.",
+    "difference": "The Thoth title and imagery are Crowley/Harris’s later presentation; the GD letter attribution is retained.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-22",
+    "kind": "major",
+    "name": "Justice",
+    "thoth_name": "Adjustment",
+    "gd_number": "XI*",
+    "thoth_number": "VIII",
+    "path": 22,
+    "thoth_letter": "Lamed",
+    "theme": "Balance and judgment",
+    "prompt": "Consider how a corrective act restores proportion to a whole.",
+    "imagery": "A poised figure, scales and a sword.",
+    "difference": "Thoth VIII Adjustment emphasizes continual equilibration. Lamed and Libra remain. GD-related publications vary in Strength/Justice numbering; compare letters, not just numerals.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-23",
+    "kind": "major",
+    "name": "The Hanged Man",
+    "thoth_name": "The Hanged Man",
+    "gd_number": "XII",
+    "thoth_number": "XII",
+    "path": 23,
+    "thoth_letter": "Mem",
+    "theme": "Suspension and surrender",
+    "prompt": "Consider how releasing direct control can alter the form of understanding.",
+    "imagery": "An inverted figure suspended above watery forms.",
+    "difference": "The Thoth title and imagery are Crowley/Harris’s later presentation; the GD letter attribution is retained.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-24",
+    "kind": "major",
+    "name": "Death",
+    "thoth_name": "Death",
+    "gd_number": "XIII",
+    "thoth_number": "XIII",
+    "path": 24,
+    "thoth_letter": "Nun",
+    "theme": "Transformation",
+    "prompt": "Consider what changes when a fixed center meets the persistence of desire.",
+    "imagery": "A skeleton with a scythe amid forms of generation.",
+    "difference": "The Thoth title and imagery are Crowley/Harris’s later presentation; the GD letter attribution is retained.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-25",
+    "kind": "major",
+    "name": "Temperance",
+    "thoth_name": "Art",
+    "gd_number": "XIV",
+    "thoth_number": "XIV",
+    "path": 25,
+    "thoth_letter": "Samekh",
+    "theme": "Reconciliation of opposites",
+    "prompt": "Consider how opposing ingredients can produce a coherent foundation.",
+    "imagery": "A composite figure mixes opposing substances in a vessel.",
+    "difference": "Art develops Temperance into an explicitly alchemical conjunction of opposites.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-26",
+    "kind": "major",
+    "name": "The Devil",
+    "thoth_name": "The Devil",
+    "gd_number": "XV",
+    "thoth_number": "XV",
+    "path": 26,
+    "thoth_letter": "Ayin",
+    "theme": "Material constraint and generative force",
+    "prompt": "Consider the difference between useful form and bondage to form.",
+    "imagery": "A goat and emphatic symbols of generation.",
+    "difference": "The Thoth title and imagery are Crowley/Harris’s later presentation; the GD letter attribution is retained.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-27",
+    "kind": "major",
+    "name": "The Tower",
+    "thoth_name": "The Tower",
+    "gd_number": "XVI",
+    "thoth_number": "XVI",
+    "path": 27,
+    "thoth_letter": "Peh",
+    "theme": "Disruption of established structures",
+    "prompt": "Consider a force that breaks the agreement between desire and formulation.",
+    "imagery": "Lightning, fire and a collapsing tower.",
+    "difference": "The Thoth title and imagery are Crowley/Harris’s later presentation; the GD letter attribution is retained.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-28",
+    "kind": "major",
+    "name": "The Star",
+    "thoth_name": "The Star",
+    "gd_number": "XVII",
+    "thoth_number": "XVII",
+    "path": 28,
+    "thoth_letter": "Heh",
+    "theme": "Hope and renewal",
+    "prompt": "Consider the circulation of inspiration into a sustaining image.",
+    "imagery": "A pouring figure beneath a great star.",
+    "difference": "Crowley assigns Heh to the Star. His card essay retains Aquarius. This panel keeps the GD Tree (Tzaddi, Path 28); it does not infer a new set of Thoth endpoints from the letter exchange. Consult the card essays and compare the appendix tables: their reconciliation is disputed.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-29",
+    "kind": "major",
+    "name": "The Moon",
+    "thoth_name": "The Moon",
+    "gd_number": "XVIII",
+    "thoth_number": "XVIII",
+    "path": 29,
+    "thoth_letter": "Qoph",
+    "theme": "Uncertainty and fluctuating appearances",
+    "prompt": "Consider how desire and imagination complicate perception of the material world.",
+    "imagery": "Two towers, jackals and a scarab bearing light.",
+    "difference": "The Thoth title and imagery are Crowley/Harris’s later presentation; the GD letter attribution is retained.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-30",
+    "kind": "major",
+    "name": "The Sun",
+    "thoth_name": "The Sun",
+    "gd_number": "XIX",
+    "thoth_number": "XIX",
+    "path": 30,
+    "thoth_letter": "Resh",
+    "theme": "Illumination and vitality",
+    "prompt": "Consider how clear articulation illuminates a formative pattern.",
+    "imagery": "Radiant solar light above two figures.",
+    "difference": "The Thoth title and imagery are Crowley/Harris’s later presentation; the GD letter attribution is retained.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-31",
+    "kind": "major",
+    "name": "Judgement",
+    "thoth_name": "The Aeon",
+    "gd_number": "XX",
+    "thoth_number": "XX",
+    "path": 31,
+    "thoth_letter": "Shin",
+    "theme": "Awakening and renewal",
+    "prompt": "Consider a transforming impulse expressed through concrete action.",
+    "imagery": "Nuit, Hadit and Horus replace a conventional resurrection scene.",
+    "difference": "The Aeon replaces the older judgment/resurrection framework with Crowley’s Thelemic aeon symbolism.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  },
+  {
+    "id": "major-32",
+    "kind": "major",
+    "name": "The Universe",
+    "thoth_name": "The Universe",
+    "gd_number": "XXI",
+    "thoth_number": "XXI",
+    "path": 32,
+    "thoth_letter": "Tav",
+    "theme": "Completion and manifestation",
+    "prompt": "Consider the boundary through which a pattern becomes an accomplished form.",
+    "imagery": "A dancing figure within a surrounding ellipse.",
+    "difference": "The Thoth title and imagery are Crowley/Harris’s later presentation; the GD letter attribution is retained.",
+    "sources": [
+      "book-t",
+      "thoth"
+    ],
+    "version": "GD baseline with separately labeled Thoth comparison"
+  }
+]

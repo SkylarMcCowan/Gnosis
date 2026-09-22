@@ -99,6 +99,10 @@ class KnowledgeIndex:
             text = data['content']
             metadata.update({k: data[k] for k in ('url', 'title', 'captured_at', 'published_at', 'verification_status') if data.get(k)})
             metadata['origin'] = 'saved-web' if str(data.get('url', '')).startswith(('http://', 'https://')) else 'saved-conversation'
+            if data.get('origin') == 'research-synthesis':
+                metadata.update(origin='research-synthesis', verification_status='unverified',
+                                research_status=data.get('research_status'), citations=data.get('citations', []),
+                                contradiction=data.get('contradiction'))
             if data.get('origin') == 'derived-learning':
                 metadata.update(origin='derived-learning', verification_status='unverified',
                                 source_path=data.get('source_path'), source_hash=data.get('source_hash'))

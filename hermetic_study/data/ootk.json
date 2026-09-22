@@ -1,0 +1,341 @@
+{
+  "id": "ootk",
+  "name": "Opening of the Key",
+  "tradition": "Golden Dawn",
+  "source": "gd-manuscript-q",
+  "version": "Golden Dawn Manuscript Q baseline with separately labeled modern teaching notes",
+
+  "overview": {
+    "summary": "The Opening of the Key is a five-operation Tarot divination. The same question is successively examined through the fourfold YHVH structure, the Twelve Houses, the Twelve Zodiac Signs, the Thirty-Six Decanates, and finally the Ten Sephiroth.",
+    "sequence": [
+      "Operation I — Opening of the Question: Four YHVH packets",
+      "Operation II — Development: Twelve Astrological Houses",
+      "Operation III — Continuing Development: Twelve Zodiac Signs",
+      "Operation IV — Further Development: Thirty-Six Decanates",
+      "Operation V — Conclusion: Ten Sephiroth"
+    ],
+    "core_method": [
+      "Form one question and retain it throughout all five operations.",
+      "Traditionally select one of the sixteen Court cards as the Significator.",
+      "Preserve the relative order of cards after dealing.",
+      "Locate the Significator in the relevant packet or arrangement.",
+      "Notice the symbolic field in which the Significator falls.",
+      "For horseshoe packets, count from the Significator in the direction its figure faces.",
+      "Stop the counting sequence when a card already read is reached.",
+      "After counting, pair cards from opposite ends inward.",
+      "Use surrounding elemental relationships to qualify the force of a card.",
+      "Synthesize the five operations as stages of one question rather than five unrelated readings."
+    ],
+    "court_note": "The historical procedure selects the Significator from the sixteen Court cards. This milestone teaches that procedure, but the application currently models only the 22 Majors and 40 numbered Minors. A future courts.json module can complete the 78-card virtual model.",
+    "reversal_note": "In Manuscript Q an inverted card is left physically inverted because its facing direction matters, but inversion does not create a separate reversed card meaning."
+  },
+
+  "counting": {
+    "introduction": "The card from which counting begins is itself number 1. Continue counting in the established direction. When the sequence lands on a card already read, the counting sequence ends.",
+    "rules": [
+      {
+        "id": "ace",
+        "label": "Ace",
+        "count": 5,
+        "reason": "Spirit and the four elements"
+      },
+      {
+        "id": "princess",
+        "label": "Princess / Knave / Page",
+        "count": 7,
+        "reason": "Seven palaces of Malkuth"
+      },
+      {
+        "id": "court",
+        "label": "King, Queen, Knight / Prince",
+        "count": 4,
+        "reason": "Four letters of Tetragrammaton"
+      },
+      {
+        "id": "pip",
+        "label": "Numbered Minor",
+        "count": "card number",
+        "reason": "Its number / Sephirah"
+      },
+      {
+        "id": "mother",
+        "label": "Major — Aleph, Mem, Shin",
+        "count": 3,
+        "reason": "Three Mother letters"
+      },
+      {
+        "id": "double",
+        "label": "Major — Double letter",
+        "count": 9,
+        "reason": "Seven planetary letters plus Caput and Cauda Draconis in the historical counting explanation"
+      },
+      {
+        "id": "single",
+        "label": "Major — Simple letter",
+        "count": 12,
+        "reason": "Twelve Zodiacal signs"
+      }
+    ]
+  },
+
+  "houses": [
+    {
+      "number": 1,
+      "name": "First House",
+      "teaching": "Self, embodiment, immediate circumstances and manner of entering the situation.",
+      "source": "editorial"
+    },
+    {
+      "number": 2,
+      "name": "Second House",
+      "teaching": "Resources, possessions, material support and what is valued.",
+      "source": "editorial"
+    },
+    {
+      "number": 3,
+      "name": "Third House",
+      "teaching": "Communication, nearby environment, learning, siblings and short journeys.",
+      "source": "editorial"
+    },
+    {
+      "number": 4,
+      "name": "Fourth House",
+      "teaching": "Home, foundations, ancestry and private roots.",
+      "source": "editorial"
+    },
+    {
+      "number": 5,
+      "name": "Fifth House",
+      "teaching": "Pleasure, creativity, play, children and personal expression.",
+      "source": "editorial"
+    },
+    {
+      "number": 6,
+      "name": "Sixth House",
+      "teaching": "Work, service, routine, maintenance and health-related circumstances.",
+      "source": "editorial"
+    },
+    {
+      "number": 7,
+      "name": "Seventh House",
+      "teaching": "Partnerships, agreements, marriage and open opposition.",
+      "source": "editorial"
+    },
+    {
+      "number": 8,
+      "name": "Eighth House",
+      "teaching": "Shared resources, inheritance, loss, transformation and obligations to others.",
+      "source": "editorial"
+    },
+    {
+      "number": 9,
+      "name": "Ninth House",
+      "teaching": "Religion, philosophy, higher learning, law and long journeys.",
+      "source": "editorial"
+    },
+    {
+      "number": 10,
+      "name": "Tenth House",
+      "teaching": "Public role, vocation, reputation, authority and visible achievement.",
+      "source": "editorial"
+    },
+    {
+      "number": 11,
+      "name": "Eleventh House",
+      "teaching": "Friends, groups, alliances, hopes and collective aspirations.",
+      "source": "editorial"
+    },
+    {
+      "number": 12,
+      "name": "Twelfth House",
+      "teaching": "Withdrawal, confinement, hidden matters, isolation and what operates outside ordinary awareness.",
+      "source": "editorial"
+    }
+  ],
+
+  "operations": [
+    {
+      "id": 1,
+      "title": "Opening of the Question",
+      "system": "Four YHVH packets",
+      "purpose": "Shows the matter as it presently stands and identifies the elemental/YHVH field in which the Significator appears.",
+      "shuffle": true,
+      "cut": true,
+      "layout": "four-packets",
+      "packets": [
+        {
+          "key": "Yod",
+          "letter": "Y",
+          "element": "Fire",
+          "suit": "Wands",
+          "traditional_field": "Energy and strife"
+        },
+        {
+          "key": "Heh",
+          "letter": "H",
+          "element": "Water",
+          "suit": "Cups",
+          "traditional_field": "Pleasure"
+        },
+        {
+          "key": "Vau",
+          "letter": "V",
+          "element": "Air",
+          "suit": "Swords",
+          "traditional_field": "Trouble and difficulty"
+        },
+        {
+          "key": "Heh Final",
+          "letter": "H final",
+          "element": "Earth",
+          "suit": "Disks",
+          "traditional_field": "Business, money and material affairs"
+        }
+      ],
+      "steps": [
+        "Choose the Significator before beginning. In the historical procedure this is one of the sixteen Court cards.",
+        "Form the question clearly and keep the same question throughout the complete Opening of the Key.",
+        "The enquirer shuffles the complete deck while concentrating on the matter.",
+        "Place the deck face down as a single packet.",
+        "Cut approximately in half and move the upper portion to the right.",
+        "Cut the right-hand packet approximately in half and move its upper portion farther right.",
+        "Cut the left-hand packet approximately in half, placing its upper portion to the left.",
+        "You now have four packets. From right to left they correspond to Yod, Heh, Vau and Heh-final.",
+        "Turn all four packets face up without changing their relative order.",
+        "Read the four exposed cards as a preliminary indication. Their elemental dignity relative to the packet position can strengthen or weaken their expression.",
+        "Examine the packets without changing card order and locate the Significator.",
+        "Record whether the Significator falls under Yod/Fire, Heh/Water, Vau/Air or Heh-final/Earth.",
+        "Retain only the packet containing the Significator for the detailed reading.",
+        "Spread that packet face up into a horseshoe while preserving its order.",
+        "Notice the predominant suit, concentrations of repeated ranks, and any unusual predominance of Major Arcana.",
+        "Begin counting from the Significator. The Significator itself counts as number 1.",
+        "Count in the direction the Significator faces.",
+        "At each selected card, use that card's own counting value to determine the next selected card.",
+        "Continue until the count lands on a card already selected.",
+        "Interpret the resulting chain as a narrative.",
+        "Then pair the cards from opposite ends of the horseshoe inward. Do not skip the Significator if it becomes part of a pair.",
+        "Combine the packet's elemental field, the counting narrative, the pairs and elemental dignities into the Operation I interpretation."
+      ]
+    },
+
+    {
+      "id": 2,
+      "title": "Development of the Matter",
+      "system": "Twelve Astrological Houses",
+      "purpose": "Places the developing matter within one of the twelve fields of experience represented by the Astrological Houses.",
+      "shuffle": true,
+      "cut": false,
+      "layout": "twelve-packets",
+      "steps": [
+        "Gather the complete deck again.",
+        "The enquirer shuffles while continuing to concentrate on the original question.",
+        "Do not cut the deck in this operation.",
+        "Deal one card at a time face down into twelve packets in rotation.",
+        "Packet 1 corresponds to House I, packet 2 to House II, continuing through House XII.",
+        "Continue dealing cyclically until the complete deck has been distributed.",
+        "Preserve both the order of the packets and the relative order of cards within each packet.",
+        "Locate the Significator without disturbing the cards.",
+        "Record which Astrological House contains the Significator.",
+        "Use that House as the broad field in which the matter is presently developing.",
+        "Set the other eleven packets aside.",
+        "Spread the retained packet face up into a horseshoe.",
+        "Notice suit predominance, repeated ranks and concentrations of Major Arcana.",
+        "Count from the Significator in the direction its figure faces.",
+        "Stop when the sequence lands on a card already read.",
+        "Interpret the counting sequence as a narrative.",
+        "Pair opposite ends of the horseshoe inward.",
+        "Interpret the pairs and surrounding elemental dignities.",
+        "Relate the result back to the House containing the Significator and to Operation I."
+      ]
+    },
+
+    {
+      "id": 3,
+      "title": "Continuing Development",
+      "system": "Twelve Zodiac Signs",
+      "purpose": "Examines the developing question through the twelve Zodiacal modes and their corresponding Major Arcana.",
+      "shuffle": true,
+      "cut": false,
+      "layout": "twelve-packets",
+      "steps": [
+        "Gather the complete deck.",
+        "Shuffle again while retaining the same original question.",
+        "Do not cut.",
+        "Deal the deck into twelve packets in exactly the same cyclic manner used in Operation II.",
+        "Assign the packets in Zodiacal order from Aries through Pisces.",
+        "Locate the Significator without altering card order.",
+        "Record the Zodiac sign containing the Significator.",
+        "Also note the Golden Dawn Major Arcana associated with that Zodiac sign.",
+        "Set the other eleven packets aside.",
+        "Spread the selected packet as a horseshoe.",
+        "Notice suit predominance, repeated ranks and Major Arcana concentration.",
+        "Count from the Significator in the direction its figure faces.",
+        "Continue until a previously selected card is reached.",
+        "Interpret the counting sequence.",
+        "Pair opposite ends inward.",
+        "Interpret the pairs and elemental dignities.",
+        "Relate the Zodiacal quality and its Major Arcana to the results of Operations I and II."
+      ]
+    },
+
+    {
+      "id": 4,
+      "title": "Further Development",
+      "system": "Thirty-Six Decanates",
+      "purpose": "Examines the further development of the matter through the thirty-six ten-degree Zodiacal divisions represented by the numbered Minor Arcana from Two through Ten.",
+      "shuffle": true,
+      "cut": true,
+      "layout": "thirty-six-circle",
+      "steps": [
+        "Gather and shuffle the complete deck while holding the original question in mind.",
+        "Do not make an ordinary random cut.",
+        "Turn the deck face up and carefully search through it without changing the relative order until the Significator is found.",
+        "Cut at the Significator so that the Significator becomes the first card for the new arrangement while all relative order is otherwise preserved.",
+        "Turn the deck face down again.",
+        "Remove the Significator and place it face up in the center.",
+        "Deal the next thirty-six cards face up in a circle around the Significator.",
+        "These thirty-six positions correspond symbolically to the thirty-six Decanates.",
+        "Notice the predominant suit, repeated ranks and concentration of Major Arcana among the thirty-six cards.",
+        "Unlike the horseshoe operations, begin counting from the first of the thirty-six dealt cards rather than from the Significator.",
+        "Always count in the same direction in which the thirty-six cards were dealt.",
+        "Apply the normal counting value of each selected card.",
+        "Stop when the sequence returns to a card already selected.",
+        "Interpret this counting chain.",
+        "Pair card 1 with card 36, card 2 with card 35, card 3 with card 34, continuing inward.",
+        "Interpret each pair with attention to elemental dignity and the surrounding cards.",
+        "Relate the decanic development back to Operations I through III."
+      ]
+    },
+
+    {
+      "id": 5,
+      "title": "Conclusion of the Matter",
+      "system": "Ten Sephiroth",
+      "purpose": "Places the termination or conclusion of the question within one of the ten Sephiroth of the Tree of Life.",
+      "shuffle": true,
+      "cut": false,
+      "layout": "ten-packets",
+      "steps": [
+        "Gather the complete deck again.",
+        "Shuffle while retaining the same question.",
+        "Do not cut.",
+        "Deal one card at a time into ten packets in rotation.",
+        "Packet 1 corresponds to Kether, packet 2 to Chokmah, continuing through packet 10, Malkuth.",
+        "Continue cyclically until the whole deck is distributed.",
+        "Locate the Significator without changing card order.",
+        "Record the Sephirah containing the Significator.",
+        "Treat that Sephirah as the broad Qabalistic context of the conclusion rather than as a simple positive or negative verdict.",
+        "Set the other nine packets aside.",
+        "Spread the selected packet into a horseshoe.",
+        "Notice suit predominance, repeated ranks and concentrations of Major Arcana.",
+        "Count from the Significator in the direction its figure faces.",
+        "Stop when a previously selected card is reached.",
+        "Interpret the counting chain.",
+        "Pair cards from opposite ends inward.",
+        "Interpret elemental dignity and the relationship of each pair.",
+        "Synthesize the Sephirah, the counting narrative and the pairings.",
+        "Finally synthesize all five operations: opening condition, House development, Zodiacal development, decanic development and Sephirothic conclusion."
+      ]
+    }
+  ]
+}

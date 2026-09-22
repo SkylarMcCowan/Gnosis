@@ -2,6 +2,61 @@
 import pytest
 
 import webagent
+from core.topic_guard import filter_web_results
+
+
+@pytest.mark.parametrize('query', ['Alister Crawley', 'alister crawley residence', 'Aleister Crowley'])
+def test_search_accepts_correctly_spelled_name(query, monkeypatch):
+    source = {"title": "Aleister Crowley", "content": "His life and homes.",
+              "url": "https://example.org/crowley"}
+    monkeypatch.setattr(webagent, 'search_searx', lambda _: [source])
+    results = webagent.search_web(query)
+    assert results[0]['url'] == source['url']
+    # The later evidence filter must also accept the corrected name.
+    assert filter_web_results(query, results) == results
+
+
+def test_relevance_does_not_reuse_one_fuzzy_word():
+    assert filter_web_results('alister aleister', [
+        {'title': 'Aleister', 'content': 'Unrelated page'},
+    ]) == []
+
+
+def test_filter_rejection_is_distinct_from_provider_failure(monkeypatch, capsys):
+    monkeypatch.setattr(webagent, 'search_searx', lambda _: [
+        {'title': 'Golden Corral', 'content': 'Buffet restaurant', 'url': 'https://example.org'},
+    ])
+    webagent.search_web('Golden Dawn')
+    output = capsys.readouterr().out
+    assert 'none passed the topic relevance filter' in output
+    assert 'sources unavailable' not in output
+
+
+def test_empty_provider_results_report_unavailability(monkeypatch, capsys):
+    monkeypatch.setattr(webagent, 'search_searx', lambda _: [])
+    webagent.search_web('Golden Dawn')
+    assert 'sources unavailable or returned no results' in capsys.readouterr().out
+
+
+def test_golden_dawn_rejects_unrelated_provider_hits():
+    results = [
+        {"title": "Cómo obtener ayuda en Windows", "content": "Soporte Microsoft"},
+        {"title": "Golden Corral", "content": "America's buffet restaurant"},
+        {"title": "Golden 1 Credit Union", "content": "Banking services"},
+        {"title": "Golden", "content": "Official music video"},
+        {"title": "Hermetic Order of the Golden Dawn", "content": "Ceremonial magic and cipher manuscripts"},
+    ]
+    assert filter_web_results("Golden Dawn", results) == results[-1:]
+    assert filter_web_results("lets talk about some of the sciences of the hermetic order of the golden dawn", results) == results[-1:]
+
+
+def test_selected_search_does_not_save_or_attribute_off_topic_results(monkeypatch):
+    monkeypatch.setattr(webagent.tool_registry, "execute", lambda *a, **kw: [
+        {"title": "Golden Corral", "content": "Buffet restaurant", "url": "https://example.com"},
+    ])
+    assert webagent._execute_research_tool_action(
+        {"tool": "web.search", "arguments": {"query": "Golden Dawn"}}, "Golden Dawn"
+    ) == []
 
 
 @pytest.fixture

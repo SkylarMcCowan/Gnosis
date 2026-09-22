@@ -39,9 +39,13 @@ def gui(qapp, isolated_data_dir):
     window.deleteLater()
 
 
-def test_nav_has_seventeen_pages(gui):
-    assert gui.pages.count() == 17
-    assert gui.nav_list.count() == 17
+def test_nav_has_eighteen_pages(gui):
+    assert gui.pages.count() == 18
+    assert gui.nav_list.count() == 18
+    assert gui.pages.widget(17) is gui.paranormal_lab_widget
+    assert "Investigation Lab" in gui.nav_list.item(17).text()
+    assert gui.pages.widget(16) is gui.hermetic_study_widget
+    assert "Tarot Study" in gui.nav_list.item(16).text()
 
 
 def test_nav_switches_pages(gui):
@@ -58,28 +62,10 @@ def test_report_page_runs_with_no_data(gui):
     assert "None recorded yet" in text or "No " in text
 
 
-def test_proposals_page_shows_no_items_with_nothing_generated_yet(gui):
-    gui._refresh_proposals()
-    assert gui.proposals_list.count() == 0
-
-
-def test_proposals_page_lists_and_loads_a_real_proposal(gui):
-    proposals_dir = core_config.path("gnosis_workspace", "proposals", "20260101_000000_example")
-    os.makedirs(proposals_dir, exist_ok=True)
-    with open(os.path.join(proposals_dir, "report.md"), "w", encoding="utf-8") as f:
-        f.write("# a proposal\nSecurity: OK")
-    with open(os.path.join(proposals_dir, "example.py"), "w", encoding="utf-8") as f:
-        f.write("class Example:\n    pass\n")
-
-    gui._refresh_proposals()
-    assert gui.proposals_list.count() == 1
-    item = gui.proposals_list.item(0)
-    assert item.text() == "20260101_000000_example"
-
-    gui._load_proposal(item)
-    detail = gui.proposals_detail.toPlainText()
-    assert "a proposal" in detail
-    assert "class Example" in detail
+def test_learning_controls_replace_proposals(gui):
+    assert all("Proposals" not in gui.nav_list.item(i).text() for i in range(gui.nav_list.count()))
+    assert gui.si_learning_button.isCheckable()
+    assert not gui.si_learning_button.isChecked()
 
 
 def test_knowledge_page_lists_and_loads_a_real_file(gui):
@@ -141,7 +127,7 @@ def test_run_cycle_wires_a_successful_worker_result_into_the_output(gui, qapp):
     gui._si_worker.wait(2000)
     qapp.processEvents()
     assert "a fake report" in gui.si_output.toPlainText()
-    assert gui.si_preview_button.isEnabled()
+    assert gui.si_run_button.isEnabled()
 
 
 def test_run_cycle_wires_a_selfimprove_style_tuple_result_into_the_output(gui, qapp):
@@ -160,7 +146,7 @@ def test_run_cycle_wires_a_worker_error_into_the_output(gui, qapp):
     gui._si_worker.wait(2000)
     qapp.processEvents()
     assert "kaboom" in gui.si_output.toPlainText()
-    assert gui.si_preview_button.isEnabled()
+    assert gui.si_run_button.isEnabled()
 
 
 def test_subscriptions_page_has_a_button_for_every_catalog_item(gui):
@@ -330,3 +316,16 @@ def test_removing_a_weather_subscription(gui):
 
     assert gui.weather_grid.count() == 0
     assert subscriptions.list_subscriptions() == []
+
+
+def test_selfimprove_has_one_live_output(gui):
+    from PyQt6.QtWidgets import QTextEdit
+    assert len(gui.si_output.parentWidget().findChildren(QTextEdit)) == 1
+    gui._append_si_output('Code improvement result')
+    gui._learning.emit('Searching: coral reefs')
+    gui._tick_learning()
+    text = gui.si_output.toPlainText()
+    assert 'Code improvement result' in text
+    assert 'Searching: coral reefs' in text
+    gui._tick_learning()
+    assert gui.si_output.toPlainText() == text

@@ -57,3 +57,15 @@ subscriptions/subscriptions.json
 weather_station/radio_stations.json
 worklog/worklog.json
 games/zuma_endless_save.json
+
+# Personal Hermetic study review history
+hermetic_study/progress.json
+hermetic_study/__pycache__/
+
+# Local investigation evidence and Python caches
+investigations/
+paranormal/**/__pycache__/
+paranormal/__pycache__/
+
+# Generated local macOS GUI launcher
+.gnosis-macos/

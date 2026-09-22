@@ -72,12 +72,14 @@ def test_first_clean_line_returns_none_for_empty_input():
     assert webagent._first_clean_line("\n\n") is None
 
 
-def test_fallback_query_leaves_a_non_correction_prompt_unchanged():
+def test_fallback_query_leaves_prompt_unchanged_when_rewrite_fails(monkeypatch):
+    monkeypatch.setattr(webagent, "_resolve_correction_entity", lambda prompt: None)
     query = webagent._fallback_research_query("who is the current mayor of Boston?", evidence=[])
     assert query == "who is the current mayor of Boston?"
 
 
-def test_fallback_query_appends_official_source_when_evidence_exists():
+def test_fallback_query_appends_official_source_when_evidence_exists(monkeypatch):
+    monkeypatch.setattr(webagent, "_resolve_correction_entity", lambda prompt: None)
     query = webagent._fallback_research_query("who is the current mayor of Boston?", evidence=[{"url": "x"}])
     assert query == "who is the current mayor of Boston? official source"
 

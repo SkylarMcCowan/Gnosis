@@ -11,7 +11,7 @@ def test_model_directed_web_research_runs_one_search_then_answers(isolated_data_
     fake_result = {
         "title": "Example result",
         "url": "https://example.com/a",
-        "content": "Some background content about the topic, long enough to score decently.",
+        "content": "Some background content about the test query topic, long enough to score decently.",
         "search_provider": "test",
     }
     monkeypatch.setattr(webagent.tool_registry.get("web.search"), "_search_fn", lambda query: [fake_result])
@@ -104,7 +104,7 @@ def test_forced_continuation_queries_are_exempt_from_the_near_duplicate_guard(is
     webagent.context.deep_think_mode = True
     monkeypatch.setattr(webagent, "_deep_think_research_plan", lambda prompt: None)
     search_calls = []
-    fake_result = {"title": "Example", "url": "https://example.com/a", "content": "Some real background content."}
+    fake_result = {"title": "The Reluctant Messenger", "url": "https://example.com/a", "content": "Some real background content."}
     monkeypatch.setattr(
         webagent.tool_registry.get("web.search"), "_search_fn",
         lambda query: search_calls.append(query) or [fake_result],

@@ -1,0 +1,990 @@
+[
+  {
+    "id": "minor-wands-1",
+    "kind": "minor",
+    "name": "Ace of Wands",
+    "number": 1,
+    "sephirah": 1,
+    "suit": "Wands",
+    "thoth_title": "Root of the Powers of Fire",
+    "gd_title": "Root of the Powers of Fire",
+    "zodiac": null,
+    "planet": null,
+    "decan": null,
+    "degrees": null,
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Kether is the undivided root of Wands. Study the element in potential before assigning it a particular situation; the Ace does not inherit a decan from the numbered cards.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-wands-2",
+    "kind": "minor",
+    "name": "2 of Wands",
+    "number": 2,
+    "sephirah": 2,
+    "suit": "Wands",
+    "thoth_title": "Dominion",
+    "gd_title": "Dominion",
+    "zodiac": "Aries",
+    "planet": "Mars",
+    "decan": 1,
+    "degrees": [
+      0,
+      10
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Mars supplies directed initiative to Chokmah’s outpouring in Fire; Aries reinforces beginning and assertion. Dominion names the act of establishing a direction.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-wands-3",
+    "kind": "minor",
+    "name": "3 of Wands",
+    "number": 3,
+    "sephirah": 3,
+    "suit": "Wands",
+    "thoth_title": "Virtue",
+    "gd_title": "Established Strength",
+    "zodiac": "Aries",
+    "planet": "Sun",
+    "decan": 2,
+    "degrees": [
+      10,
+      20
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Binah gives the impulse a form; the Sun in Aries emphasizes a coherent, active expression. Virtue here can be studied as effective power, not merely moral goodness.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-wands-4",
+    "kind": "minor",
+    "name": "4 of Wands",
+    "number": 4,
+    "sephirah": 4,
+    "suit": "Wands",
+    "thoth_title": "Completion",
+    "gd_title": "Perfected Work",
+    "zodiac": "Aries",
+    "planet": "Venus",
+    "decan": 3,
+    "degrees": [
+      20,
+      30
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Chesed establishes a stable fiery order. Venus in Aries adds attraction to initiative, suggesting a completed arrangement that can support further action.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-wands-5",
+    "kind": "minor",
+    "name": "5 of Wands",
+    "number": 5,
+    "sephirah": 5,
+    "suit": "Wands",
+    "thoth_title": "Strife",
+    "gd_title": "Strife",
+    "zodiac": "Leo",
+    "planet": "Saturn",
+    "decan": 1,
+    "degrees": [
+      0,
+      10
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Geburah introduces testing and restriction into Fire. Saturn constrains Leo’s expressive force, so Strife can be understood as energetic pressure meeting resistance.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-wands-6",
+    "kind": "minor",
+    "name": "6 of Wands",
+    "number": 6,
+    "sephirah": 6,
+    "suit": "Wands",
+    "thoth_title": "Victory",
+    "gd_title": "Victory",
+    "zodiac": "Leo",
+    "planet": "Jupiter",
+    "decan": 2,
+    "degrees": [
+      10,
+      20
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Tiphareth centers and reconciles Fire; Jupiter expands Leo’s expression. Victory names a temporary coherence of directed power.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-wands-7",
+    "kind": "minor",
+    "name": "7 of Wands",
+    "number": 7,
+    "sephirah": 7,
+    "suit": "Wands",
+    "thoth_title": "Valour",
+    "gd_title": "Valour",
+    "zodiac": "Leo",
+    "planet": "Mars",
+    "decan": 3,
+    "degrees": [
+      20,
+      30
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Netzach’s persistence expresses itself through Fire, while Mars in Leo stresses bold assertion. Valour suggests maintaining an effort when harmony is no longer assured.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-wands-8",
+    "kind": "minor",
+    "name": "8 of Wands",
+    "number": 8,
+    "sephirah": 8,
+    "suit": "Wands",
+    "thoth_title": "Swiftness",
+    "gd_title": "Swiftness",
+    "zodiac": "Sagittarius",
+    "planet": "Mercury",
+    "decan": 1,
+    "degrees": [
+      0,
+      10
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Hod formulates Fire into a directed pattern. Mercury in Sagittarius emphasizes rapid transmission toward a goal, providing a route to the title Swiftness.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-wands-9",
+    "kind": "minor",
+    "name": "9 of Wands",
+    "number": 9,
+    "sephirah": 9,
+    "suit": "Wands",
+    "thoth_title": "Strength",
+    "gd_title": "Great Strength",
+    "zodiac": "Sagittarius",
+    "planet": "Moon",
+    "decan": 2,
+    "degrees": [
+      10,
+      20
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Yesod supplies a sustaining pattern to Fire. The Moon in Sagittarius introduces fluctuation within aspiration, making Strength a question of resilient continuity.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-wands-10",
+    "kind": "minor",
+    "name": "10 of Wands",
+    "number": 10,
+    "sephirah": 10,
+    "suit": "Wands",
+    "thoth_title": "Oppression",
+    "gd_title": "Oppression",
+    "zodiac": "Sagittarius",
+    "planet": "Saturn",
+    "decan": 3,
+    "degrees": [
+      20,
+      30
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Malkuth takes Fire into its full outward expression. Saturn in Sagittarius restricts its movement, suggesting force burdened by its own material demands.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-cups-1",
+    "kind": "minor",
+    "name": "Ace of Cups",
+    "number": 1,
+    "sephirah": 1,
+    "suit": "Cups",
+    "thoth_title": "Root of the Powers of Water",
+    "gd_title": "Root of the Powers of Water",
+    "zodiac": null,
+    "planet": null,
+    "decan": null,
+    "degrees": null,
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Kether is the undivided root of Cups. Study the element in potential before assigning it a particular situation; the Ace does not inherit a decan from the numbered cards.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-cups-2",
+    "kind": "minor",
+    "name": "2 of Cups",
+    "number": 2,
+    "sephirah": 2,
+    "suit": "Cups",
+    "thoth_title": "Love",
+    "gd_title": "Love",
+    "zodiac": "Cancer",
+    "planet": "Venus",
+    "decan": 1,
+    "degrees": [
+      0,
+      10
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Chokmah gives Water its first movement toward another. Venus in Cancer combines attraction with containment, supporting the theme of Love.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-cups-3",
+    "kind": "minor",
+    "name": "3 of Cups",
+    "number": 3,
+    "sephirah": 3,
+    "suit": "Cups",
+    "thoth_title": "Abundance",
+    "gd_title": "Abundance",
+    "zodiac": "Cancer",
+    "planet": "Mercury",
+    "decan": 2,
+    "degrees": [
+      10,
+      20
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Binah gives Water a generative container. Mercury in Cancer articulates that fecundity into many expressions, suggesting Abundance.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-cups-4",
+    "kind": "minor",
+    "name": "4 of Cups",
+    "number": 4,
+    "sephirah": 4,
+    "suit": "Cups",
+    "thoth_title": "Luxury",
+    "gd_title": "Blended Pleasure",
+    "zodiac": "Cancer",
+    "planet": "Moon",
+    "decan": 3,
+    "degrees": [
+      20,
+      30
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Chesed stabilizes Water, and the Moon in Cancer deepens the enclosed receptive condition. Luxury asks when enjoyment becomes too settled.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-cups-5",
+    "kind": "minor",
+    "name": "5 of Cups",
+    "number": 5,
+    "sephirah": 5,
+    "suit": "Cups",
+    "thoth_title": "Disappointment",
+    "gd_title": "Loss in Pleasure",
+    "zodiac": "Scorpio",
+    "planet": "Mars",
+    "decan": 1,
+    "degrees": [
+      0,
+      10
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Geburah disturbs Water’s continuity. Mars in Scorpio intensifies the disruption, providing a route to Disappointment rather than undisturbed pleasure.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-cups-6",
+    "kind": "minor",
+    "name": "6 of Cups",
+    "number": 6,
+    "sephirah": 6,
+    "suit": "Cups",
+    "thoth_title": "Pleasure",
+    "gd_title": "Pleasure",
+    "zodiac": "Scorpio",
+    "planet": "Sun",
+    "decan": 2,
+    "degrees": [
+      10,
+      20
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Tiphareth brings Water into proportion; the Sun in Scorpio illuminates its transforming depth. Pleasure names an experience with a coherent center.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-cups-7",
+    "kind": "minor",
+    "name": "7 of Cups",
+    "number": 7,
+    "sephirah": 7,
+    "suit": "Cups",
+    "thoth_title": "Debauch",
+    "gd_title": "Illusionary Success",
+    "zodiac": "Scorpio",
+    "planet": "Venus",
+    "decan": 3,
+    "degrees": [
+      20,
+      30
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Netzach amplifies attraction within Water. Venus in Scorpio can intensify desire beyond proportion, making Debauch a question of excess rather than a verdict on a person.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-cups-8",
+    "kind": "minor",
+    "name": "8 of Cups",
+    "number": 8,
+    "sephirah": 8,
+    "suit": "Cups",
+    "thoth_title": "Indolence",
+    "gd_title": "Abandoned Success",
+    "zodiac": "Pisces",
+    "planet": "Saturn",
+    "decan": 1,
+    "degrees": [
+      0,
+      10
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Hod attempts to organize Water, while Saturn in Pisces checks its movement. Indolence suggests a receptive field that no longer circulates readily.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-cups-9",
+    "kind": "minor",
+    "name": "9 of Cups",
+    "number": 9,
+    "sephirah": 9,
+    "suit": "Cups",
+    "thoth_title": "Happiness",
+    "gd_title": "Material Happiness",
+    "zodiac": "Pisces",
+    "planet": "Jupiter",
+    "decan": 2,
+    "degrees": [
+      10,
+      20
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Yesod gathers Water into a sustaining image. Jupiter in Pisces enlarges its receptivity, supporting Happiness as a condition of felt fulfillment.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-cups-10",
+    "kind": "minor",
+    "name": "10 of Cups",
+    "number": 10,
+    "sephirah": 10,
+    "suit": "Cups",
+    "thoth_title": "Satiety",
+    "gd_title": "Perfected Success",
+    "zodiac": "Pisces",
+    "planet": "Mars",
+    "decan": 3,
+    "degrees": [
+      20,
+      30
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Malkuth completes Water’s manifestation. Mars in Pisces adds an active disturbance to that fullness; Satiety asks what happens after a capacity has been filled.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-swords-1",
+    "kind": "minor",
+    "name": "Ace of Swords",
+    "number": 1,
+    "sephirah": 1,
+    "suit": "Swords",
+    "thoth_title": "Root of the Powers of Air",
+    "gd_title": "Root of the Powers of Air",
+    "zodiac": null,
+    "planet": null,
+    "decan": null,
+    "degrees": null,
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Kether is the undivided root of Swords. Study the element in potential before assigning it a particular situation; the Ace does not inherit a decan from the numbered cards.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-swords-2",
+    "kind": "minor",
+    "name": "2 of Swords",
+    "number": 2,
+    "sephirah": 2,
+    "suit": "Swords",
+    "thoth_title": "Peace",
+    "gd_title": "Peace Restored",
+    "zodiac": "Libra",
+    "planet": "Moon",
+    "decan": 1,
+    "degrees": [
+      0,
+      10
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Chokmah begins differentiation in Air. The Moon in Libra suggests a changing balance between terms, so Peace is a held relationship rather than permanent stillness.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-swords-3",
+    "kind": "minor",
+    "name": "3 of Swords",
+    "number": 3,
+    "sephirah": 3,
+    "suit": "Swords",
+    "thoth_title": "Sorrow",
+    "gd_title": "Sorrow",
+    "zodiac": "Libra",
+    "planet": "Saturn",
+    "decan": 2,
+    "degrees": [
+      10,
+      20
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Binah gives Air a limiting form. Saturn in Libra sharpens the experience of separation and necessity, providing a route to Sorrow.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-swords-4",
+    "kind": "minor",
+    "name": "4 of Swords",
+    "number": 4,
+    "sephirah": 4,
+    "suit": "Swords",
+    "thoth_title": "Truce",
+    "gd_title": "Rest from Strife",
+    "zodiac": "Libra",
+    "planet": "Jupiter",
+    "decan": 3,
+    "degrees": [
+      20,
+      30
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Chesed stabilizes Air’s divisions. Jupiter in Libra expands the possibility of accommodation; Truce names a workable pause in conflict.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-swords-5",
+    "kind": "minor",
+    "name": "5 of Swords",
+    "number": 5,
+    "sephirah": 5,
+    "suit": "Swords",
+    "thoth_title": "Defeat",
+    "gd_title": "Defeat",
+    "zodiac": "Aquarius",
+    "planet": "Venus",
+    "decan": 1,
+    "degrees": [
+      0,
+      10
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Geburah cuts within Air’s already dividing activity. Venus in Aquarius introduces attraction into this unstable contest, inviting study of how harmony can fail: Defeat.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-swords-6",
+    "kind": "minor",
+    "name": "6 of Swords",
+    "number": 6,
+    "sephirah": 6,
+    "suit": "Swords",
+    "thoth_title": "Science",
+    "gd_title": "Earned Success",
+    "zodiac": "Aquarius",
+    "planet": "Mercury",
+    "decan": 2,
+    "degrees": [
+      10,
+      20
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Tiphareth coordinates Air into a centered relation. Mercury in Aquarius supports clear formulation across a wider pattern, explaining Science as ordered understanding.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-swords-7",
+    "kind": "minor",
+    "name": "7 of Swords",
+    "number": 7,
+    "sephirah": 7,
+    "suit": "Swords",
+    "thoth_title": "Futility",
+    "gd_title": "Unstable Effort",
+    "zodiac": "Aquarius",
+    "planet": "Moon",
+    "decan": 3,
+    "degrees": [
+      20,
+      30
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Netzach’s desires complicate Air’s distinctions. The Moon in Aquarius introduces shifting aims; Futility asks whether divided intentions can sustain one effort.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-swords-8",
+    "kind": "minor",
+    "name": "8 of Swords",
+    "number": 8,
+    "sephirah": 8,
+    "suit": "Swords",
+    "thoth_title": "Interference",
+    "gd_title": "Shortened Force",
+    "zodiac": "Gemini",
+    "planet": "Jupiter",
+    "decan": 1,
+    "degrees": [
+      0,
+      10
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Hod multiplies Air’s own analytic activity. Jupiter in Gemini expands the number of competing directions, offering a route to Interference.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-swords-9",
+    "kind": "minor",
+    "name": "9 of Swords",
+    "number": 9,
+    "sephirah": 9,
+    "suit": "Swords",
+    "thoth_title": "Cruelty",
+    "gd_title": "Despair and Cruelty",
+    "zodiac": "Gemini",
+    "planet": "Mars",
+    "decan": 2,
+    "degrees": [
+      10,
+      20
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Yesod consolidates Air into a recurring pattern. Mars in Gemini can make that pattern cutting and repetitive, providing a symbolic basis for Cruelty.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-swords-10",
+    "kind": "minor",
+    "name": "10 of Swords",
+    "number": 10,
+    "sephirah": 10,
+    "suit": "Swords",
+    "thoth_title": "Ruin",
+    "gd_title": "Ruin",
+    "zodiac": "Gemini",
+    "planet": "Sun",
+    "decan": 3,
+    "degrees": [
+      20,
+      30
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Malkuth takes Air’s dividing work to its material limit. The Sun in Gemini exposes a completed division, suggesting Ruin as the exhaustion of that pattern.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-disks-1",
+    "kind": "minor",
+    "name": "Ace of Disks",
+    "number": 1,
+    "sephirah": 1,
+    "suit": "Disks",
+    "thoth_title": "Root of the Powers of Earth",
+    "gd_title": "Root of the Powers of Earth",
+    "zodiac": null,
+    "planet": null,
+    "decan": null,
+    "degrees": null,
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Kether is the undivided root of Disks. Study the element in potential before assigning it a particular situation; the Ace does not inherit a decan from the numbered cards.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-disks-2",
+    "kind": "minor",
+    "name": "2 of Disks",
+    "number": 2,
+    "sephirah": 2,
+    "suit": "Disks",
+    "thoth_title": "Change",
+    "gd_title": "Harmonious Change",
+    "zodiac": "Capricorn",
+    "planet": "Jupiter",
+    "decan": 1,
+    "degrees": [
+      0,
+      10
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Chokmah sets Earth into motion. Jupiter in Capricorn combines enlargement with structured material conditions; Change is the ongoing balancing of resources.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-disks-3",
+    "kind": "minor",
+    "name": "3 of Disks",
+    "number": 3,
+    "sephirah": 3,
+    "suit": "Disks",
+    "thoth_title": "Works",
+    "gd_title": "Material Works",
+    "zodiac": "Capricorn",
+    "planet": "Mars",
+    "decan": 2,
+    "degrees": [
+      10,
+      20
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Binah gives Earth an organized form. Mars in Capricorn supplies directed labor, making Works the construction of a durable result.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-disks-4",
+    "kind": "minor",
+    "name": "4 of Disks",
+    "number": 4,
+    "sephirah": 4,
+    "suit": "Disks",
+    "thoth_title": "Power",
+    "gd_title": "Earthly Power",
+    "zodiac": "Capricorn",
+    "planet": "Sun",
+    "decan": 3,
+    "degrees": [
+      20,
+      30
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Chesed stabilizes Earth’s domain. The Sun in Capricorn emphasizes its organized center; Power concerns the capacity of a material structure to hold together.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-disks-5",
+    "kind": "minor",
+    "name": "5 of Disks",
+    "number": 5,
+    "sephirah": 5,
+    "suit": "Disks",
+    "thoth_title": "Worry",
+    "gd_title": "Material Trouble",
+    "zodiac": "Taurus",
+    "planet": "Mercury",
+    "decan": 1,
+    "degrees": [
+      0,
+      10
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Geburah tests material stability. Mercury in Taurus brings calculation to fixed resources, making Worry a response to pressure on what sustains the structure.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-disks-6",
+    "kind": "minor",
+    "name": "6 of Disks",
+    "number": 6,
+    "sephirah": 6,
+    "suit": "Disks",
+    "thoth_title": "Success",
+    "gd_title": "Material Success",
+    "zodiac": "Taurus",
+    "planet": "Moon",
+    "decan": 2,
+    "degrees": [
+      10,
+      20
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Tiphareth brings Earth into proportion. The Moon in Taurus suggests a receptive, sustaining material condition, supporting the title Success.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-disks-7",
+    "kind": "minor",
+    "name": "7 of Disks",
+    "number": 7,
+    "sephirah": 7,
+    "suit": "Disks",
+    "thoth_title": "Failure",
+    "gd_title": "Success Unfulfilled",
+    "zodiac": "Taurus",
+    "planet": "Saturn",
+    "decan": 3,
+    "degrees": [
+      20,
+      30
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Netzach seeks continued growth in Earth. Saturn in Taurus constrains its yield, making Failure a question of results falling short of the desired increase.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-disks-8",
+    "kind": "minor",
+    "name": "8 of Disks",
+    "number": 8,
+    "sephirah": 8,
+    "suit": "Disks",
+    "thoth_title": "Prudence",
+    "gd_title": "Prudence",
+    "zodiac": "Virgo",
+    "planet": "Sun",
+    "decan": 1,
+    "degrees": [
+      0,
+      10
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Hod organizes Earth through detail and method. The Sun in Virgo emphasizes attentive cultivation, explaining Prudence as practical discrimination.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-disks-9",
+    "kind": "minor",
+    "name": "9 of Disks",
+    "number": 9,
+    "sephirah": 9,
+    "suit": "Disks",
+    "thoth_title": "Gain",
+    "gd_title": "Material Gain",
+    "zodiac": "Virgo",
+    "planet": "Venus",
+    "decan": 2,
+    "degrees": [
+      10,
+      20
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Yesod consolidates Earth’s productive pattern. Venus in Virgo refines and cultivates its results, suggesting Gain from sustained attention.",
+    "synthesis_source": "editorial"
+  },
+  {
+    "id": "minor-disks-10",
+    "kind": "minor",
+    "name": "10 of Disks",
+    "number": 10,
+    "sephirah": 10,
+    "suit": "Disks",
+    "thoth_title": "Wealth",
+    "gd_title": "Wealth",
+    "zodiac": "Virgo",
+    "planet": "Mercury",
+    "decan": 3,
+    "degrees": [
+      20,
+      30
+    ],
+    "sources": [
+      "book-t",
+      "thoth",
+      "777"
+    ],
+    "version": "GD decans; separately labeled GD and Thoth titles",
+    "synthesis": "Malkuth completes Earth in its own field. Mercury in Virgo organizes the accumulated result, explaining Wealth as a system of material resources rather than a promise of money.",
+    "synthesis_source": "editorial"
+  }
+]

@@ -73,17 +73,6 @@ def test_scheduler_lock_and_midnight_catchup(tmp_path):
     assert str(tmp_path/'venv/bin/python') in plist['ProgramArguments']
 
 
-def test_overnight_continues_after_failure(isolated_data_dir, monkeypatch):
-    import webagent
-    monkeypatch.setattr(webagent, 'historian', lambda **kw: (_ for _ in ()).throw(RuntimeError('bad historian')))
-    monkeypatch.setattr(webagent, 'run_self_improve_cycle', lambda: (True, 'skipped'))
-    monkeypatch.setattr(webagent, 'run_tool_generation_cycle', lambda *a, **kw: 'no gap')
-    report = webagent.run_overnight_cycle()
-    assert 'ERROR RuntimeError: bad historian' in report
-    assert 'Retrieval refresh:' in report and 'Self-improve:\nskipped' in report
-    assert 'Status: partial failure:' in report
-
-
 def test_historian_preserves_distinct_url_versions_and_archives_duplicates(isolated_data_dir, monkeypatch):
     import webagent
     kb = isolated_data_dir/'knowledge_base/web_evidence'

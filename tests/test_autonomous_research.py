@@ -142,3 +142,124 @@ def test_daytime_batch_size_preserves_shared_daily_budget(tmp_path):
         result = ar.run_research(tmp_path, chat=chat, search=lambda q: [], now=NOW, batch_size=1)
         assert result['attempted'] == 1
     assert ar.run_research(tmp_path, chat=chat, search=search, now=NOW)['attempted'] == 0
+
+
+def test_answer_is_saved_and_retrieved_with_citations(tmp_path):
+    seed(tmp_path)
+    result = ar.run_research(tmp_path, chat=chat, search=search, now=NOW)
+    assert result['saved_answers'] == 1
+    answers = list((tmp_path / 'knowledge_base/research_answers').glob('*.json'))
+    document = read_json(answers[0], {})
+    assert document['answer'] == A + ' ' + B
+    assert document['citations'][0]['url'] == 'https://docs.python.org/gc'
+    matches = KnowledgeIndex(tmp_path / 'knowledge_base').search(QUESTION)
+    synthesis = [p for _, p in matches if p.metadata['origin'] == 'research-synthesis']
+    assert synthesis
+    assert synthesis[0].metadata['verification_status'] == 'unverified'
+    assert synthesis[0].metadata['citations']
+
+
+def test_invalid_answer_not_published_but_sources_retained(tmp_path):
+    seed(tmp_path)
+    def invalid(prompt):
+        response = chat(prompt)
+        if 'citations' in response:
+            response['citations'][0]['quote'] = 'invented evidence which is not in the scraped document'
+        return response
+    result = ar.run_research(tmp_path, chat=invalid, search=search, now=NOW)
+    assert result['saved_answers'] == 0
+    assert result['saved_sources'] == 2
+    assert not list((tmp_path / 'knowledge_base/research_answers').glob('*.json'))
+
+
+def test_published_wave_answer_reaches_chat_evidence(tmp_path, monkeypatch):
+    import webagent
+    from core import config
+    from core.unsupervised_learning import finish_wave
+    stage = tmp_path / 'knowledge_state/learning_tasks/test'
+    seed(stage)
+    result = ar.run_research(stage, chat=chat, search=search, now=NOW)
+    # A long-lived chat index must discover the new wave without restarting.
+    index = KnowledgeIndex(tmp_path / 'knowledge_base')
+    assert not index.search(QUESTION)
+    report = finish_wave(tmp_path, 'wave', [{'staging': str(stage / 'knowledge_base'), 'research': result}])
+    assert report['knowledge']
+    matches = index.search(QUESTION)
+    evidence = webagent._knowledge_search_evidence(QUESTION, matches)
+    answers = [e for e in evidence if e['provenance']['origin'] == 'research-synthesis']
+    assert answers
+    assert 'Python memory garbage collection' in answers[0]['content']
+    assert answers[0]['provenance']['citations'][0]['url'] == 'https://docs.python.org/gc'
+    assert not stage.exists()
+
+
+def test_answer_repair_reuses_sources_and_saves_result(tmp_path):
+    seed(tmp_path)
+    prompts, searches = [], []
+    def repair_chat(prompt):
+        if prompt.startswith('Convert'):
+            return chat(prompt)
+        prompts.append(prompt)
+        response = chat(prompt)
+        if len(prompts) == 1:
+            response['citations'][0]['quote'] = 'Quotation absent from the actual source document.'
+        return response
+    def counted_search(query):
+        searches.append(query)
+        return search(query)
+    result = ar.run_research(tmp_path, chat=repair_chat, search=counted_search, now=NOW)
+    assert result['saved_answers'] == 1
+    assert len(prompts) == 2
+    assert 'not an exact substring' in prompts[1]
+    assert 'Previous response' in prompts[1]
+    assert len(searches) == 2  # Existing bounded search/refinement, not repeated for repair.
+    diagnostic = result['topics'][0]['answer']
+    assert diagnostic['status'] == 'repaired'
+    assert diagnostic['attempts'][1]['errors'] == []
+
+
+def test_malformed_json_gets_one_repair(tmp_path):
+    seed(tmp_path)
+    calls = []
+    def broken(prompt):
+        if prompt.startswith('Convert'):
+            return chat(prompt)
+        calls.append(prompt)
+        raise json.JSONDecodeError('Invalid JSON', '', 0)
+    result = ar.run_research(tmp_path, chat=broken, search=search, now=NOW)
+    assert len(calls) == 2
+    assert result['saved_answers'] == 0 and result['saved_sources'] == 2
+    assert 'JSONDecodeError' in result['topics'][0]['answer']['reason']
+    findings = list((tmp_path / 'knowledge_state/research_findings').glob('*.json'))
+    assert read_json(findings[0], {})['answer_diagnostic']['status'] == 'not_saved'
+
+
+def test_valid_answer_does_not_call_repair(tmp_path):
+    seed(tmp_path)
+    calls = []
+    def counted(prompt):
+        calls.append(prompt)
+        return chat(prompt)
+    result = ar.run_research(tmp_path, chat=counted, search=search, now=NOW)
+    assert result['saved_answers'] == 1
+    assert len(calls) == 2  # Query planning plus synthesis.
+    assert result['topics'][0]['answer']['status'] == 'saved'
+
+
+def test_repair_respects_expired_budget(monkeypatch):
+    now = [0]
+    monkeypatch.setattr(ar.time, 'monotonic', lambda: now[0])
+    def slow(prompt):
+        now[0] = 20
+        return {'answer': ''}
+    answer, diagnostic = ar.synthesize_answer(slow, 'question', [], deadline=10)
+    assert not answer
+    assert diagnostic['reason'] == 'Synthesis time budget exhausted.'
+
+
+def test_empty_answer_and_bad_source_have_specific_diagnostics():
+    errors = ar.answer_validation_errors(
+        {'answer': '', 'addresses_question': True, 'contradiction': False,
+         'citations': [{'source': 4, 'quote': A}]}, [{'content': A}])
+    assert any('empty' in error for error in errors)
+    assert any('source index' in error for error in errors)

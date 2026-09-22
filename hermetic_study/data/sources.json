@@ -1,0 +1,56 @@
+[
+  {
+    "id": "book-t",
+    "tradition": "Golden Dawn-derived published material",
+    "title": "Liber LXXVIII: A Description of the Cards of the Tarot",
+    "edition": "The Equinox I:8 (1912), published by Aleister Crowley; transmits Book T material",
+    "url": "https://sacred-texts.com/oto/lib78.htm",
+    "locator": "Titles, decan table, twenty-two keys and descriptions of the Aces",
+    "note": "A published witness to GD-derived material, not a claim that every editorial detail is an original Order instruction. Its Fortitude XI / Justice VIII numbering is not universal across GD presentations."
+  },
+  {
+    "id": "777",
+    "tradition": "Golden Dawn-derived / Aleister Crowley",
+    "title": "Liber 777",
+    "edition": "1909 tables, as reproduced in online transcription",
+    "url": "https://tarrdaniel.com/documents/Thelemagick/publication/english/Liber_DCCLXXVII.html",
+    "locator": "Table I, columns II, III, V–VII and XIV; Table IV, columns XCIX–CI; Table VI, Tarot attributions. The four-world teaching convention is separately explained in the Sephirah notes.",
+    "note": "Crowley’s compilation of inherited and expanded correspondences. It is not a neutral record of all Jewish Kabbalah. Later editorial additions must be distinguished."
+  },
+  {
+    "id": "thoth",
+    "tradition": "Aleister Crowley / Thoth deck",
+    "title": "The Book of Thoth",
+    "edition": "1944; paintings by Frieda Harris",
+    "url": "https://www.tarrdaniel.com/documents/Thelemagick/publication/english/Book_of_Thoth.html",
+    "locator": "Part II: individual trump essays; Part III: small cards; appendix attribution tables",
+    "note": "Card-essay attributions are used for Emperor/Star comparisons. Interpretive text in this app is a study paraphrase, not a quotation. No deck artwork is reproduced."
+  },
+  {
+    "id": "gd-manuscript-q",
+    "tradition": "Hermetic Order of the Golden Dawn / published Golden Dawn manuscript material",
+    "title": "Manuscript Q — Key to Tarot Divination",
+    "edition": "Golden Dawn manuscript material preserved in later published collections and transcriptions",
+    "url": "https://www.tarrdaniel.com/documents/Thelemagick/gd/publication/english/golden_dawn_manuscripts.html",
+    "locator": "Manuscript Q: Key to Tarot Divination; Opening of the Key; First through Fifth Operations",
+    "note": "Baseline source used here for the five-operation Opening of the Key procedure, Significator method, card counting, packet selection and pairing. House teaching summaries and application prompts are separately identified as modern educational synthesis."
+  },
+  {
+    "id": "editorial",
+    "tradition": "Modern teaching interpretation",
+    "title": "Gnosis study prompts",
+    "edition": "Hermetic Study curriculum",
+    "url": "",
+    "locator": "Basic explanations, derivation prompts, House summaries and learning exercises",
+    "note": "Original educational synthesis; not a historical quotation or a scientific claim."
+  },
+  {
+    "id": "torrens",
+    "tradition": "R. G. Torrens / published Golden Dawn-derived material",
+    "title": "Reserved source category",
+    "edition": "Not yet collated",
+    "url": "",
+    "locator": "",
+    "note": "No claims attributed to Torrens in this milestone. Source attribution uncertain until a specific edition and passage are entered."
+  }
+]

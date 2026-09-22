@@ -102,6 +102,7 @@ its existing behavior.
 | Command | Function |
 |---------|----------|
 | `/tutor [topic]` | Create personalized learning path |
+| `/lecture <topic>` | Research and write a detailed lecture in six sections; save progressively to `lectures/` |
 | `/showpath [topic]` | Display learning progress |
 | `/archives [query]` | Search knowledge base |
 | `/historian` | Organize knowledge base |
@@ -121,7 +122,6 @@ its existing behavior.
 | `/selfimprove` | Propose, fix, test, and apply one small repo improvement (never auto-commits) |
 | `/selfimprove preview` (or `--dry-run`) | Same, but only previews the verified diff - never touches the live repo |
 | `/learning` | Self-improve's recent success rate, failure patterns, and lessons learned |
-| `/generate` | Design and sandbox-test a new tool for a recurring capability gap (always a proposal, never auto-registered) |
 | `/report` | Observability: task completion, search quality, tool usage, self-improve/tool-generation performance |
 
 Every step above runs inside an isolated `git worktree` sandbox, not the live checkout - see
@@ -355,3 +355,12 @@ Spirituality, and Other interests. Use Your interests to follow any named topic
 with optional aliases or a website source. Followed topics and sources can be
 removed there; teams and weather locations have their own pickers. The welcome
 dashboard uses the same categories. Existing subscriptions keep their saved data.
+
+Unsupervised learning: In Self-Improve, toggle learning on to run waves of four concurrent, model-selected web research tasks. Wikipedia is searched first, with other sites providing additional sources. Article text and cited findings are saved. After all tasks finish, historian normalizes the isolated wave and publishes it to knowledge_base/unsupervised_learning/ before another wave begins. Toggle off to finish the current wave and cleanup without starting more. Failed or empty research backs off for 15 seconds. Closing the GUI waits for the wave to finish. /unsupervised runs one task in terminal mode; /overnight remains a compatibility alias for saved schedules. Learning adds retrievable knowledge, not model weight updates; sources are not automatically verified truth.
+
+Tarot Study (GUI): a Golden Dawn / Thoth learning panel with an interactive Tree,
+62-card explorer and local quizzes. See docs/hermetic_study.md for scope and sources.
+
+Paranormal Investigation Lab (GUI, Phase 1): local audio sessions, baseline calibration,
+WAV event capture, live spectrum and manual timeline markers. See docs/paranormal_lab.md
+for workflow, measurement limits and macOS microphone launcher requirements.
